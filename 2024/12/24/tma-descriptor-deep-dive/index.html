@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><title>CUTLASS SM90 TMA Descriptor 深度解析 - CUTLASS 学习笔记</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0d1117"><meta name="application-name" content="CUTLASS 学习笔记"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="msapplication-TileColor" content="#0d1117"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CUTLASS 学习笔记"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA（Tensor Memory Accelerator）机制，包括 Descriptor 构建、Prefetch、Copy 指令以及与 CuTe Tensor 的集成。"><meta property="og:type" content="blog"><meta property="og:title" content="CUTLASS SM90 TMA Descriptor 深度解析"><meta property="og:url" content="https://drxuqian.github.io/2024/12/24/tma-descriptor-deep-dive/"><meta property="og:site_name" content="CUTLASS 学习笔记"><meta property="og:description" content="本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA（Tensor Memory Accelerator）机制，包括 Descriptor 构建、Prefetch、Copy 指令以及与 CuTe Tensor 的集成。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://drxuqian.github.io/img/og_image.png"><meta property="article:published_time" content="2024-12-23T16:00:00.000Z"><meta property="article:modified_time" content="2025-12-23T21:56:40.365Z"><meta property="article:author" content="DrXuQian"><meta property="article:tag" content="CUTLASS"><meta property="article:tag" content="PTX"><meta property="article:tag" content="SM90"><meta property="article:tag" content="TMA"><meta property="article:tag" content="CuTe"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://drxuqian.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://drxuqian.github.io/2024/12/24/tma-descriptor-deep-dive/"},"headline":"CUTLASS SM90 TMA Descriptor 深度解析","image":["https://drxuqian.github.io/img/og_image.png"],"datePublished":"2024-12-23T16:00:00.000Z","dateModified":"2025-12-23T21:56:40.365Z","author":{"@type":"Person","name":"DrXuQian"},"publisher":{"@type":"Organization","name":"CUTLASS 学习笔记","logo":{"@type":"ImageObject","url":"https://drxuqian.github.io/img/logo.svg"}},"description":"本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA（Tensor Memory Accelerator）机制，包括 Descriptor 构建、Prefetch、Copy 指令以及与 CuTe Tensor 的集成。"}</script><link rel="canonical" href="https://drxuqian.github.io/2024/12/24/tma-descriptor-deep-dive/"><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link data-pjax rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link data-pjax rel="stylesheet" href="/css/default.css"><style>body>.footer,body>.navbar,body>.section{opacity:0}</style><!--!--><!--!--><!--!--><script src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" defer></script><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.1"><link rel="stylesheet" href="/css/custom.css"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">Home</a><a class="navbar-item" href="/archives">Archives</a><a class="navbar-item" href="/categories">Categories</a><a class="navbar-item" href="/tags">Tags</a><a class="navbar-item" href="/about">About</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2024-12-23T16:00:00.000Z" title="12/24/2024, 12:00:00 AM">2024-12-24</time>发表</span><span class="level-item"><time dateTime="2025-12-23T21:56:40.365Z" title="12/24/2025, 5:56:40 AM">2025-12-24</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/CUTLASS/">CUTLASS</a></span><span class="level-item">23 分钟读完 (大约3463个字)</span><span class="level-item" id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv">0</span>次访问</span></div></div><h1 class="title is-3 is-size-4-mobile">CUTLASS SM90 TMA Descriptor 深度解析</h1><div class="content"><p>本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA（Tensor Memory Accelerator）机制，包括 Descriptor 构建、Prefetch、Copy 指令以及与 CuTe Tensor 的集成。</p>
+<span id="more"></span>
+
+<h2 id="1-TMA-概述"><a href="#1-TMA-概述" class="headerlink" title="1. TMA 概述"></a>1. TMA 概述</h2><h3 id="1-1-什么是-TMA"><a href="#1-1-什么是-TMA" class="headerlink" title="1.1 什么是 TMA"></a>1.1 什么是 TMA</h3><p>TMA（Tensor Memory Accelerator）是 NVIDIA Hopper (SM90) 架构引入的硬件加速单元，专门用于高效的张量数据传输。它的主要特点：</p>
+<ul>
+<li><strong>异步执行</strong>：TMA 操作与 SM 计算完全异步，由专用硬件单元执行</li>
+<li><strong>硬件地址生成</strong>：自动计算多维张量的内存地址，无需软件计算</li>
+<li><strong>支持复杂布局</strong>：原生支持 swizzle、padding、stride 等复杂内存模式</li>
+<li><strong>Multicast 支持</strong>：单次操作可向 cluster 内多个 CTA 广播数据</li>
+</ul>
+<h3 id="1-2-TMA-vs-传统-Copy"><a href="#1-2-TMA-vs-传统-Copy" class="headerlink" title="1.2 TMA vs 传统 Copy"></a>1.2 TMA vs 传统 Copy</h3><table>
+<thead>
+<tr>
+<th>特性</th>
+<th>传统 Copy</th>
+<th>TMA</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>地址计算</td>
+<td>软件计算，占用寄存器</td>
+<td>硬件计算，基于 Descriptor</td>
+</tr>
+<tr>
+<td>执行单元</td>
+<td>SM (CUDA Cores)</td>
+<td>专用 TMA 硬件单元</td>
+</tr>
+<tr>
+<td>同步方式</td>
+<td><code>__syncthreads()</code></td>
+<td>mbarrier</td>
+</tr>
+<tr>
+<td>Swizzle</td>
+<td>软件实现</td>
+<td>硬件原生支持</td>
+</tr>
+<tr>
+<td>多维支持</td>
+<td>需要手动展开</td>
+<td>原生 1D-5D</td>
+</tr>
+</tbody></table>
+<h3 id="1-3-TMA-工作流程概览"><a href="#1-3-TMA-工作流程概览" class="headerlink" title="1.3 TMA 工作流程概览"></a>1.3 TMA 工作流程概览</h3><pre class="mermaid">graph LR
+    subgraph Host["Host (Kernel Launch)"]
+        GT[GMEM Tensor]
+        SL[SMEM Layout]
+        MK[make_tma_copy]
+    end
+
+    subgraph Descriptor["TMA Descriptor (128B)"]
+        DESC[cuTensorMapEncodeTiled]
+    end
+
+    subgraph Device["Device (SM90)"]
+        PF[Prefetch Descriptor]
+        LOAD[TMA Load/Store]
+        MBAR[mbarrier sync]
+    end
+
+    GT --> MK
+    SL --> MK
+    MK --> DESC
+    DESC --> PF
+    PF --> LOAD
+    LOAD --> MBAR
+
+    style DESC fill:#e1f5fe
+    style MBAR fill:#fff3e0</pre>
+
+<hr>
+<h2 id="2-TMA-Descriptor-结构"><a href="#2-TMA-Descriptor-结构" class="headerlink" title="2. TMA Descriptor 结构"></a>2. TMA Descriptor 结构</h2><h3 id="2-1-类型定义"><a href="#2-1-类型定义" class="headerlink" title="2.1 类型定义"></a>2.1 类型定义</h3><p>TMA Descriptor 是一个 128 字节的数据结构，存储了完整的张量传输信息：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/arch/copy_sm90_desc.hpp:291-297</span></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> (__CUDACC_VER_MAJOR__ &gt;= 12) &amp;&amp; !defined(__CUDACC_RTC__)</span></span><br><span class="line">  <span class="keyword">using</span> TmaDescriptor = CUtensorMap;       <span class="comment">// CUDA 12.0+ 使用原生类型</span></span><br><span class="line">  <span class="keyword">using</span> Im2ColTmaDescriptor = CUtensorMap;</span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line">  <span class="keyword">using</span> TmaDescriptor = <span class="keyword">struct</span> <span class="built_in">alignas</span>(<span class="number">64</span>) &#123; <span class="type">char</span> bytes[<span class="number">128</span>]; &#125;;  <span class="comment">// 128字节，64字节对齐</span></span><br><span class="line">  <span class="keyword">using</span> Im2ColTmaDescriptor = <span class="keyword">struct</span> <span class="built_in">alignas</span>(<span class="number">64</span>) &#123; <span class="type">char</span> bytes[<span class="number">128</span>]; &#125;;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+
+<p><strong>关键约束</strong>：</p>
+<ul>
+<li>大小：128 字节</li>
+<li>对齐：64 字节对齐（硬件要求）</li>
+<li>存储位置：通常在 constant memory 或 global memory</li>
+</ul>
+<h3 id="2-2-Descriptor-编码参数"><a href="#2-2-Descriptor-编码参数" class="headerlink" title="2.2 Descriptor 编码参数"></a>2.2 Descriptor 编码参数</h3><p>Descriptor 通过 <code>cuTensorMapEncodeTiled()</code> CUDA Driver API 创建：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:1024-1053</span></span><br><span class="line">CUresult result = <span class="built_in">cuTensorMapEncodeTiled</span>(</span><br><span class="line">    tma_desc,              <span class="comment">// 输出：TMA descriptor 指针</span></span><br><span class="line">    tma_format,            <span class="comment">// 数据类型 (FP32, FP16, BF16, INT8, etc.)</span></span><br><span class="line">    tma_dim,               <span class="comment">// 维度数 (1-5)</span></span><br><span class="line">    gmem_address,          <span class="comment">// 全局内存基地址 (16字节对齐)</span></span><br><span class="line">    gmem_prob_shape,       <span class="comment">// 各维度大小 (uint32_t[5])</span></span><br><span class="line">    gmem_prob_stride + <span class="number">1</span>,  <span class="comment">// 各维度步长 (uint64_t[5], 字节为单位)</span></span><br><span class="line">    smem_box_shape,        <span class="comment">// SMEM tile 各维度大小 (uint32_t[5], 最大256)</span></span><br><span class="line">    smem_box_stride,       <span class="comment">// SMEM tile 步长 (uint32_t[5])</span></span><br><span class="line">    tma_interleave,        <span class="comment">// 交错模式</span></span><br><span class="line">    tma_swizzle,           <span class="comment">// Swizzle 模式 (32B, 64B, 128B)</span></span><br><span class="line">    tma_l2Promotion,       <span class="comment">// L2 缓存策略</span></span><br><span class="line">    tma_oobFill            <span class="comment">// 越界填充值 (ZERO 或 CONSTANT)</span></span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-3-参数详解"><a href="#2-3-参数详解" class="headerlink" title="2.3 参数详解"></a>2.3 参数详解</h3><table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>约束</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>gmem_address</code></td>
+<td><code>void*</code></td>
+<td>16 字节对齐</td>
+<td>全局内存基地址</td>
+</tr>
+<tr>
+<td><code>gmem_prob_shape[i]</code></td>
+<td><code>uint32_t</code></td>
+<td>1 ~ 2^32</td>
+<td>第 i 维的元素数</td>
+</tr>
+<tr>
+<td><code>gmem_prob_stride[i]</code></td>
+<td><code>uint64_t</code></td>
+<td>16 字节对齐，最大 2^40</td>
+<td>第 i 维的字节步长</td>
+</tr>
+<tr>
+<td><code>smem_box_shape[i]</code></td>
+<td><code>uint32_t</code></td>
+<td>1 ~ 256</td>
+<td>SMEM tile 第 i 维大小</td>
+</tr>
+<tr>
+<td><code>smem_box_stride[i]</code></td>
+<td><code>uint32_t</code></td>
+<td>1 ~ 8</td>
+<td>SMEM tile 第 i 维步长</td>
+</tr>
+</tbody></table>
+<h3 id="2-4-Swizzle-模式"><a href="#2-4-Swizzle-模式" class="headerlink" title="2.4 Swizzle 模式"></a>2.4 Swizzle 模式</h3><p>Swizzle 用于优化 shared memory bank conflict：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Swizzle 模式选项</span></span><br><span class="line">CU_TENSOR_MAP_SWIZZLE_NONE    <span class="comment">// 无 swizzle</span></span><br><span class="line">CU_TENSOR_MAP_SWIZZLE_32B     <span class="comment">// 32 字节 swizzle</span></span><br><span class="line">CU_TENSOR_MAP_SWIZZLE_64B     <span class="comment">// 64 字节 swizzle</span></span><br><span class="line">CU_TENSOR_MAP_SWIZZLE_128B    <span class="comment">// 128 字节 swizzle</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="2-5-数据类型映射"><a href="#2-5-数据类型映射" class="headerlink" title="2.5 数据类型映射"></a>2.5 数据类型映射</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:906-918</span></span><br><span class="line"><span class="comment">// TMA 数据格式映射</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_UINT8          <span class="comment">// uint8_t, int8_t</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_UINT16         <span class="comment">// uint16_t, int16_t, half_t, bfloat16_t</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_UINT32         <span class="comment">// uint32_t, int32_t, float</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_UINT64         <span class="comment">// uint64_t, int64_t, double</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_FLOAT16        <span class="comment">// half_t (FP16 专用)</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_FLOAT32        <span class="comment">// float</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_FLOAT64        <span class="comment">// double</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_BFLOAT16       <span class="comment">// bfloat16_t</span></span><br><span class="line">CU_TENSOR_MAP_DATA_TYPE_FLOAT32_FTZ    <span class="comment">// TF32 (Tensor Float 32)</span></span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="3-TMA-Descriptor-创建流程"><a href="#3-TMA-Descriptor-创建流程" class="headerlink" title="3. TMA Descriptor 创建流程"></a>3. TMA Descriptor 创建流程</h2><h3 id="3-1-make-tma-copy-API"><a href="#3-1-make-tma-copy-API" class="headerlink" title="3.1 make_tma_copy API"></a>3.1 make_tma_copy API</h3><p>CUTLASS&#x2F;CuTe 提供了高层 API 来创建 TMA copy atom：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:1221-1336</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">class</span> <span class="title class_">TmaInternalType</span> = <span class="type">void</span>,</span><br><span class="line">          <span class="keyword">class</span> CopyOp,</span><br><span class="line">          <span class="keyword">class</span> GEngine, <span class="keyword">class</span> GLayout,</span><br><span class="line">          <span class="keyword">class</span> SLayout,</span><br><span class="line">          <span class="keyword">class</span> CTA_Tiler,</span><br><span class="line">          <span class="keyword">class</span> Cluster_Size&gt;</span><br><span class="line">CUTE_HOST_RTC</span><br><span class="line"><span class="keyword">auto</span></span><br><span class="line"><span class="built_in">make_tma_copy</span>(CopyOp                  <span class="type">const</span>&amp; copy_op,      <span class="comment">// SM90_TMA_LOAD 等</span></span><br><span class="line">              Tensor&lt;GEngine,GLayout&gt; <span class="type">const</span>&amp; gtensor,      <span class="comment">// 全局内存张量</span></span><br><span class="line">              SLayout                 <span class="type">const</span>&amp; slayout,      <span class="comment">// 共享内存布局</span></span><br><span class="line">              CTA_Tiler               <span class="type">const</span>&amp; cta_tiler,    <span class="comment">// CTA tile 大小</span></span><br><span class="line">              Cluster_Size            <span class="type">const</span>&amp; cluster_size) <span class="comment">// Cluster 大小</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="comment">// 1. 创建 CTA tile 和 cluster tile 的布局</span></span><br><span class="line">  <span class="keyword">auto</span> cta_v_tile = <span class="built_in">make_identity_layout</span>(<span class="built_in">shape</span>(gtensor)).<span class="built_in">compose</span>(cta_tiler);</span><br><span class="line">  <span class="keyword">auto</span> cta_t_tile = <span class="built_in">make_layout</span>(cluster_size);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 2. 推导 TMA 内部数据类型</span></span><br><span class="line">  <span class="keyword">using</span> TmaType = <span class="type">conditional_t</span>&lt;is_same&lt;<span class="type">void</span>, TmaInternalType&gt;::value,</span><br><span class="line">                                <span class="keyword">typename</span> GEngine::value_type, TmaInternalType&gt;;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 3. 调用内部实现创建 TiledCopy</span></span><br><span class="line">  <span class="keyword">return</span> detail::<span class="built_in">make_tma_copy_tiled</span>&lt;TmaType&gt;(copy_op,</span><br><span class="line">                                              gtensor, slayout,</span><br><span class="line">                                              cta_t_tile, cta_v_tile);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-使用示例"><a href="#3-2-使用示例" class="headerlink" title="3.2 使用示例"></a>3.2 使用示例</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 创建全局内存张量 (M x K 矩阵)</span></span><br><span class="line"><span class="keyword">auto</span> gmem_tensor = <span class="built_in">make_tensor</span>(</span><br><span class="line">    <span class="built_in">make_gmem_ptr</span>(ptr_A),</span><br><span class="line">    <span class="built_in">make_shape</span>(M, K),</span><br><span class="line">    <span class="built_in">make_stride</span>(K, Int&lt;<span class="number">1</span>&gt;&#123;&#125;)</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 定义共享内存布局 (128 x 64 tile，带 swizzle)</span></span><br><span class="line"><span class="keyword">auto</span> smem_layout = <span class="built_in">make_layout</span>(</span><br><span class="line">    <span class="built_in">make_shape</span>(Int&lt;<span class="number">128</span>&gt;&#123;&#125;, Int&lt;<span class="number">64</span>&gt;&#123;&#125;),</span><br><span class="line">    GenColMajor&#123;&#125;</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 创建 TMA copy atom</span></span><br><span class="line"><span class="keyword">auto</span> tma_load_a = <span class="built_in">make_tma_copy</span>(</span><br><span class="line">    SM90_TMA_LOAD&#123;&#125;,           <span class="comment">// TMA Load 操作</span></span><br><span class="line">    gmem_tensor,               <span class="comment">// 源：全局内存张量</span></span><br><span class="line">    smem_layout,               <span class="comment">// 目标：共享内存布局</span></span><br><span class="line">    <span class="built_in">make_shape</span>(Int&lt;<span class="number">128</span>&gt;&#123;&#125;, Int&lt;<span class="number">64</span>&gt;&#123;&#125;),  <span class="comment">// CTA tile 大小</span></span><br><span class="line">    Int&lt;<span class="number">1</span>&gt;&#123;&#125;                   <span class="comment">// Cluster 大小</span></span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-3-内部创建流程"><a href="#3-3-内部创建流程" class="headerlink" title="3.3 内部创建流程"></a>3.3 内部创建流程</h3><pre class="mermaid">graph TB
+    subgraph Input["输入"]
+        GT[GMEM Tensor<br/>shape, stride, ptr]
+        SL[SMEM Layout<br/>shape, stride, swizzle]
+        CT[CTA Tiler]
+        CS[Cluster Size]
+    end
+
+    subgraph Process["处理流程"]
+        V1[提取 GMEM 参数]
+        V2[计算 SMEM box 参数]
+        V3[确定 Swizzle 模式]
+        V4[创建 Basis Mapping]
+    end
+
+    subgraph Output["输出"]
+        DESC[TmaDescriptor<br/>128 bytes]
+        AUX[AuxTmaParams<br/>g_stride_, TmaGmemBasis]
+        TC[TiledCopy Atom]
+    end
+
+    GT --> V1
+    SL --> V2
+    SL --> V3
+    V1 --> V4
+    V2 --> V4
+
+    V4 --> DESC
+    V4 --> AUX
+    DESC --> TC
+    AUX --> TC
+
+    style DESC fill:#e1f5fe
+    style TC fill:#e8f5e9</pre>
+
+<h3 id="3-4-参数验证"><a href="#3-4-参数验证" class="headerlink" title="3.4 参数验证"></a>3.4 参数验证</h3><p>TMA 对参数有严格要求，CUTLASS 在创建时会验证：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:949-979</span></span><br><span class="line"><span class="comment">// 地址对齐检查</span></span><br><span class="line"><span class="built_in">assert</span>((<span class="built_in">reinterpret_cast</span>&lt;<span class="type">uint64_t</span>&gt;(gmem_address) &amp; <span class="number">0b1111</span>) == <span class="number">0</span>);  <span class="comment">// 16B 对齐</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Shape 范围检查</span></span><br><span class="line"><span class="built_in">assert</span>(gmem_prob_shape[i] &gt;= <span class="number">1</span> &amp;&amp; gmem_prob_shape[i] &lt;= (<span class="number">1u</span> &lt;&lt; <span class="number">32</span>));</span><br><span class="line"></span><br><span class="line"><span class="comment">// Stride 对齐检查</span></span><br><span class="line"><span class="built_in">assert</span>((gmem_prob_stride[i] &amp; <span class="number">0b1111</span>) == <span class="number">0</span>);  <span class="comment">// 16B 对齐</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// SMEM box 大小检查</span></span><br><span class="line"><span class="built_in">assert</span>(smem_box_shape[i] &gt;= <span class="number">1</span> &amp;&amp; smem_box_shape[i] &lt;= <span class="number">256</span>);</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="4-TMA-Prefetch-机制"><a href="#4-TMA-Prefetch-机制" class="headerlink" title="4. TMA Prefetch 机制"></a>4. TMA Prefetch 机制</h2><h3 id="4-1-Descriptor-Prefetch"><a href="#4-1-Descriptor-Prefetch" class="headerlink" title="4.1 Descriptor Prefetch"></a>4.1 Descriptor Prefetch</h3><p>将 TMA Descriptor 预取到 L2 缓存，加速后续 TMA 操作：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/arch/copy_sm90_desc.hpp:302-317</span></span><br><span class="line"><span class="function">CUTE_HOST_DEVICE <span class="type">void</span></span></span><br><span class="line"><span class="function"><span class="title">prefetch_tma_descriptor</span><span class="params">(TmaDescriptor <span class="type">const</span>* desc_ptr)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> defined(CUTE_ARCH_TMA_SM90_ENABLED)</span></span><br><span class="line">  <span class="type">uint64_t</span> gmem_int_desc = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uint64_t</span>&gt;(desc_ptr);</span><br><span class="line">  <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">    <span class="string">&quot;prefetch.tensormap [%0];&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">    :</span></span></span><br><span class="line"><span class="params"><span class="function">    : <span class="string">&quot;l&quot;</span>(gmem_int_desc)</span></span></span><br><span class="line"><span class="params"><span class="function">    : <span class="string">&quot;memory&quot;</span>)</span></span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX 指令</strong>：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">prefetch.tensormap [desc_addr];</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-2-Data-Prefetch"><a href="#4-2-Data-Prefetch" class="headerlink" title="4.2 Data Prefetch"></a>4.2 Data Prefetch</h3><p>预取数据到 L2 缓存（不写入 SMEM）：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/arch/copy_sm90_tma.hpp:81-100</span></span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">SM90_TMA_LOAD_1D</span>::PREFETCH</span><br><span class="line">&#123;</span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE <span class="type">static</span> <span class="type">void</span></span></span><br><span class="line"><span class="function">  <span class="title">copy</span><span class="params">(<span class="type">void</span> <span class="type">const</span>* desc_ptr, <span class="type">int32_t</span> <span class="type">const</span>&amp; crd0)</span></span></span><br><span class="line"><span class="function">  </span>&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> defined(CUTE_ARCH_TMA_SM90_ENABLED)</span></span><br><span class="line">    <span class="type">uint64_t</span> gmem_int_desc = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uint64_t</span>&gt;(desc_ptr);</span><br><span class="line">    <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">      <span class="string">&quot;cp.async.bulk.prefetch.tensor.1d.L2.global [%0, &#123;%1&#125;];&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">      :</span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;l&quot;</span>(gmem_int_desc), <span class="string">&quot;r&quot;</span>(crd0)</span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;memory&quot;</span>)</span></span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX 指令（1D-5D）</strong>：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">// 1D</span><br><span class="line">cp.async.bulk.prefetch.tensor.1d.L2.global [desc], &#123;crd0&#125;;</span><br><span class="line"></span><br><span class="line">// 2D</span><br><span class="line">cp.async.bulk.prefetch.tensor.2d.L2.global [desc], &#123;crd0, crd1&#125;;</span><br><span class="line"></span><br><span class="line">// 3D-5D 类似...</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-3-Prefetch-使用时机"><a href="#4-3-Prefetch-使用时机" class="headerlink" title="4.3 Prefetch 使用时机"></a>4.3 Prefetch 使用时机</h3><pre class="mermaid">sequenceDiagram
+    participant K as Kernel Start
+    participant PF as Prefetch
+    participant L2 as L2 Cache
+    participant TMA as TMA Load
+
+    K->>PF: prefetch_tma_descriptor()
+    PF->>L2: 预取 Descriptor
+    Note over L2: Descriptor 缓存
+
+    K->>PF: TMA_LOAD::PREFETCH
+    PF->>L2: 预取第一批数据
+
+    K->>TMA: TMA Load (实际传输)
+    L2-->>TMA: Descriptor 命中
+    Note over TMA: 快速启动传输</pre>
+
+<hr>
+<h2 id="5-TMA-Copy-指令"><a href="#5-TMA-Copy-指令" class="headerlink" title="5. TMA Copy 指令"></a>5. TMA Copy 指令</h2><h3 id="5-1-TMA-Load"><a href="#5-1-TMA-Load" class="headerlink" title="5.1 TMA Load"></a>5.1 TMA Load</h3><p>从全局内存加载数据到共享内存：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/arch/copy_sm90_tma.hpp:49-79</span></span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">SM90_TMA_LOAD_1D</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE <span class="type">static</span> <span class="type">void</span></span></span><br><span class="line"><span class="function">  <span class="title">copy</span><span class="params">(<span class="type">void</span> <span class="type">const</span>* desc_ptr,     <span class="comment">// TMA Descriptor 指针</span></span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">uint64_t</span>* mbar_ptr,       <span class="comment">// mbarrier 指针</span></span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">uint64_t</span> cache_hint,      <span class="comment">// L2 缓存提示</span></span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">void</span>* smem_ptr,           <span class="comment">// 目标 SMEM 地址</span></span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">int32_t</span> <span class="type">const</span>&amp; crd0)</span>      <span class="comment">// 坐标</span></span></span><br><span class="line"><span class="function">  </span>&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> defined(CUTE_ARCH_TMA_SM90_ENABLED)</span></span><br><span class="line">    <span class="type">uint64_t</span> gmem_int_desc = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uint64_t</span>&gt;(desc_ptr);</span><br><span class="line">    <span class="type">uint32_t</span> smem_int_mbar = <span class="built_in">cast_smem_ptr_to_uint</span>(mbar_ptr);</span><br><span class="line">    <span class="type">uint32_t</span> smem_int_ptr  = <span class="built_in">cast_smem_ptr_to_uint</span>(smem_ptr);</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">      <span class="string">&quot;cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes.L2::cache_hint&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">      <span class="string">&quot; [%0], [%1, &#123;%3&#125;], [%2], %4;&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">      :</span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;r&quot;</span>(smem_int_ptr),      <span class="comment">// 目标 SMEM</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;l&quot;</span>(gmem_int_desc),     <span class="comment">// TMA Descriptor</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;r&quot;</span>(smem_int_mbar),     <span class="comment">// mbarrier</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;r&quot;</span>(crd0),              <span class="comment">// 坐标</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;l&quot;</span>(cache_hint)         <span class="comment">// 缓存提示</span></span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;memory&quot;</span>)</span></span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX 指令格式</strong>：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">// 基本格式</span><br><span class="line">cp.async.bulk.tensor.&#123;dim&#125;d.&#123;dst&#125;.&#123;src&#125;.mbarrier::complete_tx::bytes [smem], [desc, &#123;coords&#125;], [mbar];</span><br><span class="line"></span><br><span class="line">// 完整示例 (2D)</span><br><span class="line">cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes.L2::cache_hint</span><br><span class="line">    [smem_ptr], [tma_desc, &#123;crd0, crd1&#125;], [mbar_ptr], cache_hint;</span><br></pre></td></tr></table></figure>
+
+<h3 id="5-2-TMA-Store"><a href="#5-2-TMA-Store" class="headerlink" title="5.2 TMA Store"></a>5.2 TMA Store</h3><p>从共享内存存储数据到全局内存：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/arch/copy_sm90_tma.hpp:980-1001</span></span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">SM90_TMA_STORE_2D</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE <span class="type">static</span> <span class="type">void</span></span></span><br><span class="line"><span class="function">  <span class="title">copy</span><span class="params">(<span class="type">void</span> <span class="type">const</span>* desc_ptr,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">void</span> <span class="type">const</span>* smem_ptr,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">int32_t</span> <span class="type">const</span>&amp; crd0, <span class="type">int32_t</span> <span class="type">const</span>&amp; crd1)</span></span></span><br><span class="line"><span class="function">  </span>&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> defined(CUTE_ARCH_TMA_SM90_ENABLED)</span></span><br><span class="line">    <span class="type">uint64_t</span> gmem_int_desc = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uint64_t</span>&gt;(desc_ptr);</span><br><span class="line">    <span class="type">uint32_t</span> smem_int_ptr  = <span class="built_in">cast_smem_ptr_to_uint</span>(smem_ptr);</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">      <span class="string">&quot;cp.async.bulk.tensor.2d.global.shared::cta.bulk_group [%0, &#123;%2, %3&#125;], [%1];&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">      :</span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;l&quot;</span>(gmem_int_desc),    <span class="comment">// TMA Descriptor</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;r&quot;</span>(smem_int_ptr),     <span class="comment">// 源 SMEM</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;r&quot;</span>(crd0), <span class="string">&quot;r&quot;</span>(crd1)   <span class="comment">// 坐标</span></span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;memory&quot;</span>)</span></span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX 指令格式</strong>：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cp.async.bulk.tensor.&#123;dim&#125;d.global.shared::cta.bulk_group [desc, &#123;coords&#125;], [smem];</span><br></pre></td></tr></table></figure>
+
+<h3 id="5-3-TMA-Multicast"><a href="#5-3-TMA-Multicast" class="headerlink" title="5.3 TMA Multicast"></a>5.3 TMA Multicast</h3><p>向 cluster 内多个 CTA 同时广播数据：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/arch/copy_sm90_tma.hpp:275-306</span></span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">SM90_TMA_LOAD_MULTICAST_1D</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE <span class="type">static</span> <span class="type">void</span></span></span><br><span class="line"><span class="function">  <span class="title">copy</span><span class="params">(<span class="type">void</span> <span class="type">const</span>* desc_ptr,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">uint64_t</span>* mbar_ptr, <span class="type">uint64_t</span> cache_hint,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">uint16_t</span> multicast_mask,   <span class="comment">// 目标 CTA 掩码</span></span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">void</span>* smem_ptr,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">int32_t</span> <span class="type">const</span>&amp; crd0)</span></span></span><br><span class="line"><span class="function">  </span>&#123;</span><br><span class="line">    <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">      <span class="string">&quot;cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster.L2::cache_hint&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">      <span class="string">&quot; [%0], [%1, &#123;%4&#125;], [%2], %3, %5;&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">      :</span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;r&quot;</span>(smem_int_ptr), <span class="string">&quot;l&quot;</span>(gmem_int_desc), <span class="string">&quot;r&quot;</span>(smem_int_mbar),</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;h&quot;</span>(multicast_mask), <span class="string">&quot;r&quot;</span>(crd0), <span class="string">&quot;l&quot;</span>(cache_hint)</span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;memory&quot;</span>)</span></span>;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="5-4-TMA-Fence-Commit-Wait"><a href="#5-4-TMA-Fence-Commit-Wait" class="headerlink" title="5.4 TMA Fence&#x2F;Commit&#x2F;Wait"></a>5.4 TMA Fence&#x2F;Commit&#x2F;Wait</h3><p>用于 TMA Store 的同步控制：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/arch/copy_sm90_tma.hpp:1213-1274</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Fence: 确保之前的 SMEM 写入完成</span></span><br><span class="line"><span class="function">CUTE_HOST_DEVICE <span class="type">static</span> <span class="type">void</span></span></span><br><span class="line"><span class="function"><span class="title">tma_store_fence</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(<span class="string">&quot;fence.proxy.async.shared::cta;&quot;</span>)</span></span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Commit: 标记一组 TMA store 完成</span></span><br><span class="line"><span class="function">CUTE_HOST_DEVICE <span class="type">static</span> <span class="type">void</span></span></span><br><span class="line"><span class="function"><span class="title">tma_store_arrive</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span><span class="params">(<span class="string">&quot;cp.async.bulk.commit_group;&quot;</span>)</span></span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Wait: 等待最多 Count 个未完成的 TMA store</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="type">int</span> Count&gt;</span><br><span class="line"><span class="function">CUTE_HOST_DEVICE <span class="type">static</span> <span class="type">void</span></span></span><br><span class="line"><span class="function"><span class="title">tma_store_wait</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span><span class="params">(<span class="string">&quot;cp.async.bulk.wait_group.read %0;&quot;</span> : : <span class="string">&quot;n&quot;</span>(Count) : <span class="string">&quot;memory&quot;</span>)</span></span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="5-5-TMA-Load-vs-Store-对比"><a href="#5-5-TMA-Load-vs-Store-对比" class="headerlink" title="5.5 TMA Load vs Store 对比"></a>5.5 TMA Load vs Store 对比</h3><table>
+<thead>
+<tr>
+<th>特性</th>
+<th>TMA Load</th>
+<th>TMA Store</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>方向</td>
+<td>GMEM → SMEM</td>
+<td>SMEM → GMEM</td>
+</tr>
+<tr>
+<td>同步机制</td>
+<td>mbarrier</td>
+<td>bulk_group + wait</td>
+</tr>
+<tr>
+<td>Multicast</td>
+<td>支持</td>
+<td>不支持</td>
+</tr>
+<tr>
+<td>Scope</td>
+<td><code>shared::cluster</code></td>
+<td><code>shared::cta</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="6-CuTe-Tensor-与-TMA-集成"><a href="#6-CuTe-Tensor-与-TMA-集成" class="headerlink" title="6. CuTe Tensor 与 TMA 集成"></a>6. CuTe Tensor 与 TMA 集成</h2><h3 id="6-1-Copy-Traits-结构"><a href="#6-1-Copy-Traits-结构" class="headerlink" title="6.1 Copy_Traits 结构"></a>6.1 Copy_Traits 结构</h3><p>TMA 操作通过 <code>Copy_Traits</code> 封装：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:98-166</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">class</span> <span class="title class_">NumBitsPerTMA</span>, <span class="keyword">class</span> <span class="title class_">AuxParams_</span>&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">Copy_Traits</span>&lt;SM90_TMA_LOAD, NumBitsPerTMA, AuxParams_&gt;</span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">using</span> ThrID     = Layout&lt;_1&gt;;           <span class="comment">// 单线程执行</span></span><br><span class="line">  <span class="keyword">using</span> SrcLayout = Layout&lt;Shape&lt;_1,NumBitsPerTMA&gt;&gt;;</span><br><span class="line">  <span class="keyword">using</span> DstLayout = Layout&lt;Shape&lt;_1,NumBitsPerTMA&gt;&gt;;</span><br><span class="line">  <span class="keyword">using</span> RefLayout = SrcLayout;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// TMA Descriptor 存储</span></span><br><span class="line">  TmaDescriptor tma_desc_;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 辅助参数（stride 映射等）</span></span><br><span class="line">  <span class="keyword">using</span> AuxParams = AuxParams_;</span><br><span class="line">  AuxParams aux_params_;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 获取 Descriptor 指针</span></span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE <span class="keyword">constexpr</span></span></span><br><span class="line"><span class="function">  TmaDescriptor <span class="type">const</span>* <span class="title">get_tma_descriptor</span><span class="params">()</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> &amp;tma_desc_;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 生成坐标张量</span></span><br><span class="line">  <span class="keyword">template</span> &lt;<span class="keyword">class</span> <span class="title class_">GShape</span>&gt;</span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE <span class="keyword">constexpr</span></span></span><br><span class="line"><span class="function">  <span class="keyword">auto</span> <span class="title">get_tma_tensor</span><span class="params">(GShape <span class="type">const</span>&amp; g_shape)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">make_coord_tensor</span>(<span class="built_in">make_layout</span>(g_shape, aux_params_.g_stride_));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="6-2-AuxTmaParams-辅助参数"><a href="#6-2-AuxTmaParams-辅助参数" class="headerlink" title="6.2 AuxTmaParams 辅助参数"></a>6.2 AuxTmaParams 辅助参数</h3><p>存储 GMEM 到 TMA 坐标的映射关系：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:50-58</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">class</span> <span class="title class_">GmemTmaBasisStrides_</span>, <span class="keyword">class</span> <span class="title class_">TmaGmemBasis_</span>, <span class="keyword">class</span> <span class="title class_">TmaSwizzle_</span>&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">AuxTmaParams</span> &#123;</span><br><span class="line">  <span class="keyword">using</span> GmemStrides = GmemTmaBasisStrides_;</span><br><span class="line">  GmemStrides g_stride_;           <span class="comment">// GMEM mode → TMA coord 的映射</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">using</span> TmaGmemBasis = TmaGmemBasis_;  <span class="comment">// 静态 basis 信息</span></span><br><span class="line">  <span class="built_in">static_assert</span>(is_static&lt;TmaGmemBasis&gt;::value);</span><br><span class="line"></span><br><span class="line">  <span class="keyword">using</span> TmaSwizzle = TmaSwizzle_;      <span class="comment">// Swizzle 模式</span></span><br><span class="line">  <span class="built_in">static_assert</span>(is_static&lt;TmaSwizzle&gt;::value);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="6-3-可执行-TMA-Copy"><a href="#6-3-可执行-TMA-Copy" class="headerlink" title="6.3 可执行 TMA Copy"></a>6.3 可执行 TMA Copy</h3><p>运行时携带 barrier 和 cache hint：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:169-198</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">class</span> <span class="title class_">NumBitsPerTMA</span>&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">Copy_Traits</span>&lt;SM90_TMA_LOAD_OP, NumBitsPerTMA&gt;</span><br><span class="line">  : TMA_LOAD_Unpack&lt;SM90_TMA_LOAD_OP, NumBitsPerTMA&gt;</span><br><span class="line">&#123;</span><br><span class="line">  <span class="comment">// 运行时参数</span></span><br><span class="line">  tuple&lt;</span><br><span class="line">    TmaDescriptor <span class="type">const</span>*,  // Descriptor 指针</span><br><span class="line">    <span class="type">uint64_t</span>*,             // mbarrier 指针</span><br><span class="line">    <span class="type">uint64_t</span>               // L2 cache hint</span><br><span class="line">  &gt; <span class="type">const</span> opargs_;</span><br><span class="line"></span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE</span></span><br><span class="line"><span class="function">  <span class="title">Copy_Traits</span><span class="params">(TmaDescriptor <span class="type">const</span>* desc, <span class="type">uint64_t</span>* mbar, <span class="type">uint64_t</span> cache)</span></span></span><br><span class="line"><span class="function">    : opargs_(desc, mbar, cache) &#123;</span>&#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="6-4-Copy-Unpack-执行"><a href="#6-4-Copy-Unpack-执行" class="headerlink" title="6.4 Copy Unpack 执行"></a>6.4 Copy Unpack 执行</h3><p>将 CuTe tensor copy 转换为 TMA 指令：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:60-87</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">class</span> <span class="title class_">CopyOp</span>, <span class="keyword">class</span>... Args&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">TMA_LOAD_Unpack</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">template</span> &lt;<span class="keyword">class</span> <span class="title class_">TS</span>, <span class="keyword">class</span> <span class="title class_">SLayout</span>,</span><br><span class="line">            <span class="keyword">class</span> <span class="title class_">TD</span>, <span class="keyword">class</span> <span class="title class_">DLayout</span>&gt;</span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE <span class="keyword">friend</span> <span class="keyword">constexpr</span> <span class="type">void</span></span></span><br><span class="line"><span class="function">  <span class="title">copy_unpack</span><span class="params">(Copy_Traits&lt;CopyOp, Args...&gt; <span class="type">const</span>&amp; traits,</span></span></span><br><span class="line"><span class="params"><span class="function">              Tensor&lt;TS,SLayout&gt;           <span class="type">const</span>&amp; src,   <span class="comment">// GMEM 坐标张量</span></span></span></span><br><span class="line"><span class="params"><span class="function">              Tensor&lt;TD,DLayout&gt;                &amp; dst)</span>   <span class="comment">// SMEM 数据张量</span></span></span><br><span class="line"><span class="function">  </span>&#123;</span><br><span class="line">    <span class="comment">// 验证目标是共享内存</span></span><br><span class="line">    <span class="built_in">static_assert</span>(is_smem&lt;TD&gt;::value,</span><br><span class="line">        <span class="string">&quot;SM90_TMA_LOAD requires the destination be shared memory.&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 提取源坐标</span></span><br><span class="line">    <span class="keyword">auto</span> src_coord = src.<span class="built_in">data</span>().coord_;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取目标指针</span></span><br><span class="line">    <span class="type">void</span>* dst_ptr = cute::<span class="built_in">raw_pointer_cast</span>(dst.<span class="built_in">data</span>());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 展开并调用 TMA 指令</span></span><br><span class="line">    <span class="keyword">return</span> detail::<span class="built_in">explode_tuple</span>(detail::CallCOPY&lt;CopyOp&gt;&#123;&#125;,</span><br><span class="line">                                 traits.opargs_, ...,</span><br><span class="line">                                 <span class="built_in">make_tuple</span>(dst_ptr), ...,</span><br><span class="line">                                 src_coord, ...);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="6-5-完整数据流"><a href="#6-5-完整数据流" class="headerlink" title="6.5 完整数据流"></a>6.5 完整数据流</h3><pre class="mermaid">graph TB
+    subgraph CuTe["CuTe Layer"]
+        GS[gmem_tensor<br/>shape + stride + ptr]
+        CT[TiledCopy<br/>Copy_Traits]
+        CR[coord_tensor<br/>get_tma_tensor]
+        ST[smem_tensor]
+    end
+
+    subgraph TMA["TMA Layer"]
+        DESC[TmaDescriptor]
+        MBAR[mbarrier]
+        PTX[PTX Instructions]
+    end
+
+    subgraph HW["Hardware"]
+        TU[TMA Unit]
+        GMEM[(Global Memory)]
+        SMEM[(Shared Memory)]
+    end
+
+    GS --> CT
+    CT --> DESC
+    CT --> CR
+
+    CR -->|src coords| PTX
+    ST -->|dst ptr| PTX
+    DESC -->|desc ptr| PTX
+    MBAR -->|mbar ptr| PTX
+
+    PTX --> TU
+    TU --> GMEM
+    TU --> SMEM
+
+    style DESC fill:#e1f5fe
+    style MBAR fill:#fff3e0
+    style TU fill:#e8f5e9</pre>
+
+<hr>
+<h2 id="7-完整使用示例"><a href="#7-完整使用示例" class="headerlink" title="7. 完整使用示例"></a>7. 完整使用示例</h2><h3 id="7-1-创建-TMA-Copy"><a href="#7-1-创建-TMA-Copy" class="headerlink" title="7.1 创建 TMA Copy"></a>7.1 创建 TMA Copy</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 步骤 1: 定义矩阵参数</span></span><br><span class="line"><span class="keyword">constexpr</span> <span class="type">int</span> M = <span class="number">4096</span>;</span><br><span class="line"><span class="keyword">constexpr</span> <span class="type">int</span> K = <span class="number">4096</span>;</span><br><span class="line"><span class="keyword">constexpr</span> <span class="type">int</span> TILE_M = <span class="number">128</span>;</span><br><span class="line"><span class="keyword">constexpr</span> <span class="type">int</span> TILE_K = <span class="number">64</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 步骤 2: 创建全局内存张量</span></span><br><span class="line"><span class="type">half_t</span>* ptr_A = ...;  <span class="comment">// 设备内存指针</span></span><br><span class="line"><span class="keyword">auto</span> gmem_A = <span class="built_in">make_tensor</span>(</span><br><span class="line">    <span class="built_in">make_gmem_ptr</span>(ptr_A),</span><br><span class="line">    <span class="built_in">make_shape</span>(M, K),</span><br><span class="line">    <span class="built_in">make_stride</span>(K, Int&lt;<span class="number">1</span>&gt;&#123;&#125;)  <span class="comment">// Row-major</span></span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 步骤 3: 定义共享内存布局（带 swizzle）</span></span><br><span class="line"><span class="keyword">auto</span> smem_layout_A = <span class="built_in">composition</span>(</span><br><span class="line">    Swizzle&lt;<span class="number">3</span>, <span class="number">3</span>, <span class="number">3</span>&gt;&#123;&#125;,</span><br><span class="line">    <span class="built_in">make_layout</span>(<span class="built_in">make_shape</span>(Int&lt;TILE_M&gt;&#123;&#125;, Int&lt;TILE_K&gt;&#123;&#125;),</span><br><span class="line">                <span class="built_in">make_stride</span>(Int&lt;TILE_K&gt;&#123;&#125;, Int&lt;<span class="number">1</span>&gt;&#123;&#125;))</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 步骤 4: 创建 TMA copy atom</span></span><br><span class="line"><span class="keyword">auto</span> tma_load_A = <span class="built_in">make_tma_copy</span>(</span><br><span class="line">    SM90_TMA_LOAD&#123;&#125;,</span><br><span class="line">    gmem_A,</span><br><span class="line">    smem_layout_A,</span><br><span class="line">    <span class="built_in">make_shape</span>(Int&lt;TILE_M&gt;&#123;&#125;, Int&lt;TILE_K&gt;&#123;&#125;),</span><br><span class="line">    Int&lt;<span class="number">1</span>&gt;&#123;&#125;</span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+
+<h3 id="7-2-Kernel-中使用-TMA"><a href="#7-2-Kernel-中使用-TMA" class="headerlink" title="7.2 Kernel 中使用 TMA"></a>7.2 Kernel 中使用 TMA</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">__global__ <span class="type">void</span> <span class="title">kernel</span><span class="params">(TmaLoadA tma_load_A, ...)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 共享内存</span></span><br><span class="line">    <span class="keyword">extern</span> __shared__ <span class="type">char</span> smem[];</span><br><span class="line">    <span class="type">half_t</span>* smem_A = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">half_t</span>*&gt;(smem);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// mbarrier</span></span><br><span class="line">    __shared__ <span class="type">uint64_t</span> mbar;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 初始化 barrier (仅 thread 0)</span></span><br><span class="line">    <span class="keyword">if</span> (threadIdx.x == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="built_in">mbarrier_init</span>(&amp;mbar, <span class="number">1</span>);  <span class="comment">// 期望 1 次 arrive</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">// Prefetch descriptor</span></span><br><span class="line">        <span class="built_in">prefetch_tma_descriptor</span>(tma_load_A.<span class="built_in">get_tma_descriptor</span>());</span><br><span class="line">    &#125;</span><br><span class="line">    __syncthreads();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 计算 tile 坐标</span></span><br><span class="line">    <span class="type">int</span> tile_m = blockIdx.x;</span><br><span class="line">    <span class="type">int</span> tile_k = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取坐标张量</span></span><br><span class="line">    <span class="keyword">auto</span> coord_tensor = tma_load_A.<span class="built_in">get_tma_tensor</span>(<span class="built_in">make_shape</span>(M, K));</span><br><span class="line">    <span class="keyword">auto</span> coord = <span class="built_in">coord_tensor</span>(tile_m, tile_k);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建 SMEM 张量</span></span><br><span class="line">    <span class="keyword">auto</span> smem_tensor = <span class="built_in">make_tensor</span>(<span class="built_in">make_smem_ptr</span>(smem_A), smem_layout_A);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 发起 TMA load (仅 thread 0)</span></span><br><span class="line">    <span class="keyword">if</span> (threadIdx.x == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 设置期望传输字节数</span></span><br><span class="line">        <span class="built_in">mbarrier_arrive_expect_tx</span>(&amp;mbar, <span class="built_in">size</span>(smem_tensor) * <span class="built_in">sizeof</span>(<span class="type">half_t</span>));</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 发起 TMA</span></span><br><span class="line">        <span class="built_in">copy</span>(tma_load_A.<span class="built_in">with</span>(&amp;mbar, <span class="number">0</span>), coord, smem_tensor);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 等待 TMA 完成</span></span><br><span class="line">    <span class="built_in">mbarrier_wait</span>(&amp;mbar, <span class="number">0</span>);  <span class="comment">// phase = 0</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 使用 smem_A 进行计算...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="7-3-与-Pipeline-配合"><a href="#7-3-与-Pipeline-配合" class="headerlink" title="7.3 与 Pipeline 配合"></a>7.3 与 Pipeline 配合</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 多 stage pipeline</span></span><br><span class="line"><span class="keyword">for</span> (<span class="type">int</span> k = <span class="number">0</span>; k &lt; num_k_tiles; ++k) &#123;</span><br><span class="line">    <span class="comment">// 获取当前 stage</span></span><br><span class="line">    <span class="keyword">auto</span> stage = k % Stages;</span><br><span class="line">    <span class="keyword">auto</span>&amp; smem_A = smem_A_stages[stage];</span><br><span class="line">    <span class="keyword">auto</span>&amp; mbar = mbar_full[stage];</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Producer: TMA load</span></span><br><span class="line">    <span class="keyword">if</span> (is_producer_thread) &#123;</span><br><span class="line">        pipeline.<span class="built_in">producer_acquire</span>(pipe_state);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">auto</span> coord = <span class="built_in">coord_tensor</span>(tile_m, k);</span><br><span class="line">        <span class="built_in">copy</span>(tma_load_A.<span class="built_in">with</span>(pipeline.<span class="built_in">producer_get_barrier</span>(pipe_state), <span class="number">0</span>),</span><br><span class="line">             coord, smem_A);</span><br><span class="line"></span><br><span class="line">        ++pipe_state;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Consumer: MMA compute</span></span><br><span class="line">    <span class="keyword">if</span> (is_consumer_thread) &#123;</span><br><span class="line">        pipeline.<span class="built_in">consumer_wait</span>(pipe_state_c);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 使用 smem_A 进行 MMA</span></span><br><span class="line">        <span class="built_in">gemm</span>(smem_A, smem_B, accum);</span><br><span class="line"></span><br><span class="line">        pipeline.<span class="built_in">consumer_release</span>(pipe_state_c);</span><br><span class="line">        ++pipe_state_c;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="8-TMA-API-到-PTX-映射总览"><a href="#8-TMA-API-到-PTX-映射总览" class="headerlink" title="8. TMA API 到 PTX 映射总览"></a>8. TMA API 到 PTX 映射总览</h2><table>
+<thead>
+<tr>
+<th>CuTe&#x2F;CUTLASS API</th>
+<th>PTX 指令</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>prefetch_tma_descriptor()</code></td>
+<td><code>prefetch.tensormap [addr]</code></td>
+</tr>
+<tr>
+<td><code>SM90_TMA_LOAD::PREFETCH</code></td>
+<td><code>cp.async.bulk.prefetch.tensor.Xd.L2.global</code></td>
+</tr>
+<tr>
+<td><code>SM90_TMA_LOAD_Xd::copy()</code></td>
+<td><code>cp.async.bulk.tensor.Xd.shared::cluster.global.mbarrier::complete_tx::bytes</code></td>
+</tr>
+<tr>
+<td><code>SM90_TMA_LOAD_MULTICAST</code></td>
+<td>同上 + <code>.multicast::cluster</code></td>
+</tr>
+<tr>
+<td><code>SM90_TMA_STORE_Xd::copy()</code></td>
+<td><code>cp.async.bulk.tensor.Xd.global.shared::cta.bulk_group</code></td>
+</tr>
+<tr>
+<td><code>tma_store_fence()</code></td>
+<td><code>fence.proxy.async.shared::cta</code></td>
+</tr>
+<tr>
+<td><code>tma_store_arrive()</code></td>
+<td><code>cp.async.bulk.commit_group</code></td>
+</tr>
+<tr>
+<td><code>tma_store_wait&lt;N&gt;()</code></td>
+<td><code>cp.async.bulk.wait_group.read N</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="9-关键要点总结"><a href="#9-关键要点总结" class="headerlink" title="9. 关键要点总结"></a>9. 关键要点总结</h2><ol>
+<li><p><strong>TMA Descriptor 是核心</strong>：128 字节结构，编码完整的张量传输信息</p>
+</li>
+<li><p><strong>Host 端创建，Device 端使用</strong>：Descriptor 在 kernel launch 前创建，kernel 中只需传递指针</p>
+</li>
+<li><p><strong>与 mbarrier 配合</strong>：TMA Load 完成时自动 signal barrier，实现异步同步</p>
+</li>
+<li><p><strong>Prefetch 提升性能</strong>：预取 descriptor 和数据到 L2 缓存</p>
+</li>
+<li><p><strong>Multicast 节省带宽</strong>：单次 TMA 可向多个 CTA 广播数据</p>
+</li>
+<li><p><strong>CuTe 抽象层</strong>：<code>make_tma_copy()</code> 隐藏底层复杂性，提供高层 API</p>
+</li>
+</ol>
+<hr>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass">CUTLASS GitHub 仓库</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/copy_sm90_tma.hpp">copy_sm90_tma.hpp</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/copy_sm90_desc.hpp">copy_sm90_desc.hpp</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/copy_traits_sm90_tma.hpp">copy_traits_sm90_tma.hpp</a></li>
+<li><a target="_blank" rel="noopener" href="https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk-tensor">NVIDIA PTX ISA - TMA</a></li>
+<li><a target="_blank" rel="noopener" href="https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#tensor-memory-access">CUDA Programming Guide - TMA</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>CUTLASS SM90 TMA Descriptor 深度解析</p><p><a href="https://drxuqian.github.io/2024/12/24/tma-descriptor-deep-dive/">https://drxuqian.github.io/2024/12/24/tma-descriptor-deep-dive/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>DrXuQian</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2024-12-24</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2025-12-24</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/CUTLASS/">CUTLASS</a><a class="link-muted mr-2" rel="tag" href="/tags/PTX/">PTX</a><a class="link-muted mr-2" rel="tag" href="/tags/SM90/">SM90</a><a class="link-muted mr-2" rel="tag" href="/tags/TMA/">TMA</a><a class="link-muted mr-2" rel="tag" href="/tags/CuTe/">CuTe</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/2024/12/23/pipeline-barrier-ptx-mapping/"><span class="level-item">CUTLASS SM90 Pipeline 与 mbarrier 深度解析</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1 is-sticky"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.jpg" alt="DrXuQian"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">DrXuQian</p><p class="is-size-6 is-block">CUDA/GPU Enthusiast</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>China</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">2</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">1</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">7</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/DrXuQian" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></div></div></div><!--!--><div class="column-right-shadow is-hidden-widescreen is-sticky"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3 is-sticky"><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-23T16:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/tma-descriptor-deep-dive/">CUTLASS SM90 TMA Descriptor 深度解析</a></p><p class="categories"><a href="/categories/CUTLASS/">CUTLASS</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-22T16:00:00.000Z">2024-12-23</time></p><p class="title"><a href="/2024/12/23/pipeline-barrier-ptx-mapping/">CUTLASS SM90 Pipeline 与 mbarrier 深度解析</a></p><p class="categories"><a href="/categories/CUTLASS/">CUTLASS</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2024/12/"><span class="level-start"><span class="level-item">十二月 2024</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/CUTLASS/"><span class="tag">CUTLASS</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PTX/"><span class="tag">PTX</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SM90/"><span class="tag">SM90</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pipeline/"><span class="tag">Pipeline</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mbarrier/"><span class="tag">mbarrier</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TMA/"><span class="tag">TMA</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/CuTe/"><span class="tag">CuTe</span><span class="tag">1</span></a></div></div></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a><p class="is-size-7"><span>&copy; 2025 DrXuQian</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a><br><span id="busuanzi_container_site_uv">共<span id="busuanzi_value_site_uv">0</span>个访客</span></p><p class="is-size-7">© 2024 DrXuQian</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><script src="/js/animation.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script type="text/javascript" id="MathJax-script" async>MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+      },
+      svg: {
+        fontCache: 'global'
+      },
+      chtml: {
+        matchFontHeight: false
+      }
+    };</script><script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    }
+  });
+  document.addEventListener('pjax:complete', function() {
+    if (typeof mermaid !== 'undefined') {
+      mermaid.init(undefined, '.mermaid');
+    }
+  });
+</script>
+<script src="/js/theme-toggle.js"></script>
+</body></html>
