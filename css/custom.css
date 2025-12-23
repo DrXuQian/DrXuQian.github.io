@@ -1,5 +1,198 @@
 /* Custom styles for wider page width */
 
+/* ===== Dark Mode Theme Toggle ===== */
+
+/* Theme toggle button in navbar */
+.theme-toggle {
+    cursor: pointer;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: inherit;
+    background: transparent;
+    border: none;
+    transition: transform 0.3s ease;
+}
+
+.theme-toggle:hover {
+    transform: scale(1.1);
+}
+
+.theme-toggle .icon-sun,
+.theme-toggle .icon-moon {
+    display: none;
+}
+
+/* Light mode: show moon icon */
+html:not([data-theme="dark"]) .theme-toggle .icon-moon {
+    display: inline;
+}
+
+/* Dark mode: show sun icon */
+html[data-theme="dark"] .theme-toggle .icon-sun {
+    display: inline;
+}
+
+/* ===== Dark Mode Styles ===== */
+html[data-theme="dark"] {
+    --bg-color: #1a1a2e;
+    --bg-color-secondary: #16213e;
+    --text-color: #e4e4e4;
+    --text-color-secondary: #a0a0a0;
+    --border-color: #2d2d4a;
+    --card-bg: #1f1f38;
+    --link-color: #6c9fff;
+    --link-hover: #99b8ff;
+    --code-bg: #0d1117;
+}
+
+html[data-theme="dark"] body {
+    background-color: var(--bg-color) !important;
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .navbar {
+    background-color: var(--bg-color-secondary) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme="dark"] .navbar-item,
+html[data-theme="dark"] .navbar-link {
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .navbar-item:hover,
+html[data-theme="dark"] .navbar-link:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: var(--link-color) !important;
+}
+
+html[data-theme="dark"] .card {
+    background-color: var(--card-bg) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+html[data-theme="dark"] .card-content {
+    background-color: var(--card-bg) !important;
+}
+
+html[data-theme="dark"] .title,
+html[data-theme="dark"] .subtitle,
+html[data-theme="dark"] h1, html[data-theme="dark"] h2,
+html[data-theme="dark"] h3, html[data-theme="dark"] h4,
+html[data-theme="dark"] h5, html[data-theme="dark"] h6 {
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .content {
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] a {
+    color: var(--link-color) !important;
+}
+
+html[data-theme="dark"] a:hover {
+    color: var(--link-hover) !important;
+}
+
+html[data-theme="dark"] .menu-label {
+    color: var(--text-color-secondary) !important;
+}
+
+html[data-theme="dark"] .menu-list a {
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .menu-list a:hover {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: var(--link-color) !important;
+}
+
+html[data-theme="dark"] .tag {
+    background-color: var(--border-color) !important;
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .footer {
+    background-color: var(--bg-color-secondary) !important;
+    color: var(--text-color-secondary) !important;
+}
+
+html[data-theme="dark"] .widget {
+    background-color: var(--card-bg) !important;
+}
+
+html[data-theme="dark"] pre,
+html[data-theme="dark"] code {
+    background-color: var(--code-bg) !important;
+}
+
+html[data-theme="dark"] .hljs {
+    background-color: var(--code-bg) !important;
+}
+
+html[data-theme="dark"] .article-meta,
+html[data-theme="dark"] .level-item {
+    color: var(--text-color-secondary) !important;
+}
+
+html[data-theme="dark"] .button.is-primary {
+    background-color: #3273dc !important;
+}
+
+html[data-theme="dark"] .input,
+html[data-theme="dark"] .textarea,
+html[data-theme="dark"] .select select {
+    background-color: var(--bg-color-secondary) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .pagination-link,
+html[data-theme="dark"] .pagination-previous,
+html[data-theme="dark"] .pagination-next {
+    background-color: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .toc-list a {
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .toc-list a:hover,
+html[data-theme="dark"] .toc-list a.is-active {
+    color: var(--link-color) !important;
+}
+
+html[data-theme="dark"] hr {
+    background-color: var(--border-color) !important;
+}
+
+html[data-theme="dark"] blockquote {
+    background-color: var(--bg-color-secondary) !important;
+    border-left-color: var(--link-color) !important;
+}
+
+html[data-theme="dark"] table th,
+html[data-theme="dark"] table td {
+    border-color: var(--border-color) !important;
+}
+
+html[data-theme="dark"] table thead th {
+    background-color: var(--bg-color-secondary) !important;
+    color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] table tbody tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* ===== End Dark Mode Styles ===== */
+
 /* Increase container max-width */
 html body .container {
     max-width: 1600px !important;
