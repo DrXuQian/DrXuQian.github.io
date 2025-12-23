@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><title>CUTLASS SM90 TMA Multicast 深度解析 - CUTLASS 学习笔记</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0d1117"><meta name="application-name" content="CUTLASS 学习笔记"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="msapplication-TileColor" content="#0d1117"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CUTLASS 学习笔记"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA Multicast 机制，包括 multicast mask 的计算、Cluster 与 Multicast 的关系，以及在 GEMM 中的实际应用。"><meta property="og:type" content="blog"><meta property="og:title" content="CUTLASS SM90 TMA Multicast 深度解析"><meta property="og:url" content="https://drxuqian.github.io/2024/12/24/tma-multicast-deep-dive/"><meta property="og:site_name" content="CUTLASS 学习笔记"><meta property="og:description" content="本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA Multicast 机制，包括 multicast mask 的计算、Cluster 与 Multicast 的关系，以及在 GEMM 中的实际应用。"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://drxuqian.github.io/img/og_image.png"><meta property="article:published_time" content="2024-12-23T16:00:00.000Z"><meta property="article:modified_time" content="2025-12-23T22:03:38.704Z"><meta property="article:author" content="DrXuQian"><meta property="article:tag" content="CUTLASS"><meta property="article:tag" content="TMA"><meta property="article:tag" content="Multicast"><meta property="article:tag" content="Cluster"><meta property="article:tag" content="SM90"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://drxuqian.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://drxuqian.github.io/2024/12/24/tma-multicast-deep-dive/"},"headline":"CUTLASS SM90 TMA Multicast 深度解析","image":["https://drxuqian.github.io/img/og_image.png"],"datePublished":"2024-12-23T16:00:00.000Z","dateModified":"2025-12-23T22:03:38.704Z","author":{"@type":"Person","name":"DrXuQian"},"publisher":{"@type":"Organization","name":"CUTLASS 学习笔记","logo":{"@type":"ImageObject","url":"https://drxuqian.github.io/img/logo.svg"}},"description":"本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA Multicast 机制，包括 multicast mask 的计算、Cluster 与 Multicast 的关系，以及在 GEMM 中的实际应用。"}</script><link rel="canonical" href="https://drxuqian.github.io/2024/12/24/tma-multicast-deep-dive/"><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link data-pjax rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link data-pjax rel="stylesheet" href="/css/default.css"><style>body>.footer,body>.navbar,body>.section{opacity:0}</style><!--!--><!--!--><!--!--><script src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" defer></script><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.1"><link rel="stylesheet" href="/css/custom.css"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">Home</a><a class="navbar-item" href="/archives">Archives</a><a class="navbar-item" href="/categories">Categories</a><a class="navbar-item" href="/tags">Tags</a><a class="navbar-item" href="/about">About</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2024-12-23T16:00:00.000Z" title="12/24/2024, 12:00:00 AM">2024-12-24</time>发表</span><span class="level-item"><time dateTime="2025-12-23T22:03:38.704Z" title="12/24/2025, 6:03:38 AM">2025-12-24</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/CUTLASS/">CUTLASS</a></span><span class="level-item">16 分钟读完 (大约2430个字)</span><span class="level-item" id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv">0</span>次访问</span></div></div><h1 class="title is-3 is-size-4-mobile">CUTLASS SM90 TMA Multicast 深度解析</h1><div class="content"><p>本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA Multicast 机制，包括 multicast mask 的计算、Cluster 与 Multicast 的关系，以及在 GEMM 中的实际应用。</p>
+<span id="more"></span>
+
+<h2 id="1-TMA-Multicast-概述"><a href="#1-TMA-Multicast-概述" class="headerlink" title="1. TMA Multicast 概述"></a>1. TMA Multicast 概述</h2><h3 id="1-1-什么是-TMA-Multicast"><a href="#1-1-什么是-TMA-Multicast" class="headerlink" title="1.1 什么是 TMA Multicast"></a>1.1 什么是 TMA Multicast</h3><p>TMA Multicast 是 Hopper 架构 TMA 的高级特性，允许<strong>单次 TMA 操作将数据广播到 Cluster 内的多个 CTA（Thread Block）</strong>。这对于 GEMM 等需要数据复用的场景非常有价值。</p>
+<h3 id="1-2-为什么需要-Multicast"><a href="#1-2-为什么需要-Multicast" class="headerlink" title="1.2 为什么需要 Multicast"></a>1.2 为什么需要 Multicast</h3><p>在 GEMM 中，矩阵 A 和 B 的数据被多个输出 tile 共享：</p>
+<pre class="mermaid">graph TB
+    subgraph "Cluster (2x2)"
+        subgraph "Row 0"
+            CTA00["CTA(0,0)<br/>C[0,0]"]
+            CTA01["CTA(0,1)<br/>C[0,1]"]
+        end
+        subgraph "Row 1"
+            CTA10["CTA(1,0)<br/>C[1,0]"]
+            CTA11["CTA(1,1)<br/>C[1,1]"]
+        end
+    end
+
+    A0["A row 0"] --> CTA00
+    A0 --> CTA01
+    A1["A row 1"] --> CTA10
+    A1 --> CTA11
+
+    B0["B col 0"] --> CTA00
+    B0 --> CTA10
+    B1["B col 1"] --> CTA01
+    B1 --> CTA11
+
+    style A0 fill:#e3f2fd
+    style A1 fill:#e3f2fd
+    style B0 fill:#fff3e0
+    style B1 fill:#fff3e0</pre>
+
+<ul>
+<li><strong>矩阵 A</strong>：同一行的 CTA 共享相同的 A tile（沿 N 方向广播）</li>
+<li><strong>矩阵 B</strong>：同一列的 CTA 共享相同的 B tile（沿 M 方向广播）</li>
+</ul>
+<h3 id="1-3-Multicast-vs-独立加载"><a href="#1-3-Multicast-vs-独立加载" class="headerlink" title="1.3 Multicast vs 独立加载"></a>1.3 Multicast vs 独立加载</h3><table>
+<thead>
+<tr>
+<th>方式</th>
+<th>带宽消耗</th>
+<th>延迟</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>每个 CTA 独立加载</td>
+<td>N × 数据量</td>
+<td>竞争 L2&#x2F;HBM</td>
+</tr>
+<tr>
+<td>Multicast</td>
+<td>1 × 数据量</td>
+<td>一次加载，硬件广播</td>
+</tr>
+</tbody></table>
+<p>对于 2×2 Cluster，Multicast 可节省约 50% 的内存带宽。</p>
+<hr>
+<h2 id="2-Multicast-Mask-原理"><a href="#2-Multicast-Mask-原理" class="headerlink" title="2. Multicast Mask 原理"></a>2. Multicast Mask 原理</h2><h3 id="2-1-Mask-结构"><a href="#2-1-Mask-结构" class="headerlink" title="2.1 Mask 结构"></a>2.1 Mask 结构</h3><p>Multicast mask 是一个 <strong>16-bit 整数</strong>，每一位对应 Cluster 内的一个 CTA：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">Cluster 内 CTA 编号 (block_rank_in_cluster):</span><br><span class="line"></span><br><span class="line">  Cluster 2x2 示例:</span><br><span class="line">  +-------+-------+</span><br><span class="line">  | CTA 0 | CTA 1 |  (row 0)</span><br><span class="line">  +-------+-------+</span><br><span class="line">  | CTA 2 | CTA 3 |  (row 1)</span><br><span class="line">  +-------+-------+</span><br><span class="line"></span><br><span class="line">  multicast_mask = 0b0011 表示广播到 CTA 0 和 CTA 1</span><br><span class="line">  multicast_mask = 0b0101 表示广播到 CTA 0 和 CTA 2</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-CTA-编号计算"><a href="#2-2-CTA-编号计算" class="headerlink" title="2.2 CTA 编号计算"></a>2.2 CTA 编号计算</h3><p>CTA 在 Cluster 内的编号由 <code>Layout&lt;ClusterShape&gt;</code> 决定：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cutlass/gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp:331</span></span><br><span class="line"><span class="keyword">constexpr</span> <span class="type">uint32_t</span> cluster_shape_x = <span class="built_in">get</span>&lt;<span class="number">0</span>&gt;(<span class="keyword">typename</span> DispatchPolicy::<span class="built_in">ClusterShape</span>());</span><br><span class="line">uint2 cluster_local_block_id = &#123;</span><br><span class="line">    block_rank_in_cluster % cluster_shape_x,  <span class="comment">// x = M 方向</span></span><br><span class="line">    block_rank_in_cluster / cluster_shape_x   <span class="comment">// y = N 方向</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>对于 <code>ClusterShape = Shape&lt;_2, _2&gt;</code>：</p>
+<ul>
+<li><code>block_rank = 0</code> → <code>(x=0, y=0)</code></li>
+<li><code>block_rank = 1</code> → <code>(x=1, y=0)</code></li>
+<li><code>block_rank = 2</code> → <code>(x=0, y=1)</code></li>
+<li><code>block_rank = 3</code> → <code>(x=1, y=1)</code></li>
+</ul>
+<h3 id="2-3-Mask-计算逻辑"><a href="#2-3-Mask-计算逻辑" class="headerlink" title="2.3 Mask 计算逻辑"></a>2.3 Mask 计算逻辑</h3><pre class="mermaid">graph LR
+    subgraph Input
+        CS[ClusterShape]
+        BR[block_rank_in_cluster]
+    end
+
+    subgraph Process
+        LO[Layout ClusterShape]
+        LC[local_block_id<br/>x, y]
+        MA[Mask for A<br/>沿 N 方向]
+        MB[Mask for B<br/>沿 M 方向]
+    end
+
+    CS --> LO
+    BR --> LC
+    LO --> MA
+    LO --> MB
+    LC --> MA
+    LC --> MB
+
+    style MA fill:#e3f2fd
+    style MB fill:#fff3e0</pre>
+
+<hr>
+<h2 id="3-Multicast-Mask-实现详解"><a href="#3-Multicast-Mask-实现详解" class="headerlink" title="3. Multicast Mask 实现详解"></a>3. Multicast Mask 实现详解</h2><h3 id="3-1-矩阵-A-的-Mask（沿-N-方向广播）"><a href="#3-1-矩阵-A-的-Mask（沿-N-方向广播）" class="headerlink" title="3.1 矩阵 A 的 Mask（沿 N 方向广播）"></a>3.1 矩阵 A 的 Mask（沿 N 方向广播）</h3><p>矩阵 A 的同一行数据被 N 方向的所有 CTA 共享：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cutlass/gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp:357-362</span></span><br><span class="line"><span class="type">uint16_t</span> mcast_mask_a = <span class="number">0</span>;</span><br><span class="line"><span class="keyword">auto</span> block_layout = Layout&lt;<span class="keyword">typename</span> DispatchPolicy::ClusterShape&gt;&#123;&#125;;  <span class="comment">// (m,n) -&gt; block_id</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 固定 M 坐标（当前 CTA 的 x），遍历所有 N 坐标</span></span><br><span class="line"><span class="keyword">for</span> (<span class="type">int</span> n = <span class="number">0</span>; n &lt; <span class="built_in">size</span>&lt;<span class="number">1</span>&gt;(block_layout); ++n) &#123;</span><br><span class="line">    mcast_mask_a |= (<span class="built_in">uint16_t</span>(<span class="number">1</span>) &lt;&lt; <span class="built_in">block_layout</span>(cluster_local_block_id.x, n, Int&lt;<span class="number">0</span>&gt;&#123;&#125;));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>示例</strong>：ClusterShape &#x3D; (2, 2)，当前 CTA 的 x &#x3D; 0</p>
+<table>
+<thead>
+<tr>
+<th>n</th>
+<th>block_layout(0, n)</th>
+<th>累加 mask</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>0</td>
+<td>0b0001</td>
+</tr>
+<tr>
+<td>1</td>
+<td>2</td>
+<td>0b0101</td>
+</tr>
+</tbody></table>
+<p>最终 <code>mcast_mask_a = 0b0101</code>（广播到 CTA 0 和 CTA 2）</p>
+<h3 id="3-2-矩阵-B-的-Mask（沿-M-方向广播）"><a href="#3-2-矩阵-B-的-Mask（沿-M-方向广播）" class="headerlink" title="3.2 矩阵 B 的 Mask（沿 M 方向广播）"></a>3.2 矩阵 B 的 Mask（沿 M 方向广播）</h3><p>矩阵 B 的同一列数据被 M 方向的所有 CTA 共享：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cutlass/gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp:364-368</span></span><br><span class="line"><span class="type">uint16_t</span> mcast_mask_b = <span class="number">0</span>;</span><br><span class="line"><span class="keyword">auto</span> block_layout = Layout&lt;<span class="keyword">typename</span> DispatchPolicy::ClusterShape&gt;&#123;&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 固定 N 坐标（当前 CTA 的 y），遍历所有 M 坐标</span></span><br><span class="line"><span class="keyword">for</span> (<span class="type">int</span> m = <span class="number">0</span>; m &lt; <span class="built_in">size</span>&lt;<span class="number">0</span>&gt;(block_layout); ++m) &#123;</span><br><span class="line">    mcast_mask_b |= (<span class="built_in">uint16_t</span>(<span class="number">1</span>) &lt;&lt; <span class="built_in">block_layout</span>(m, cluster_local_block_id.y, Int&lt;<span class="number">0</span>&gt;&#123;&#125;));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>示例</strong>：ClusterShape &#x3D; (2, 2)，当前 CTA 的 y &#x3D; 0</p>
+<table>
+<thead>
+<tr>
+<th>m</th>
+<th>block_layout(m, 0)</th>
+<th>累加 mask</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>0</td>
+<td>0b0001</td>
+</tr>
+<tr>
+<td>1</td>
+<td>1</td>
+<td>0b0011</td>
+</tr>
+</tbody></table>
+<p>最终 <code>mcast_mask_b = 0b0011</code>（广播到 CTA 0 和 CTA 1）</p>
+<h3 id="3-3-完整-Mask-计算图示"><a href="#3-3-完整-Mask-计算图示" class="headerlink" title="3.3 完整 Mask 计算图示"></a>3.3 完整 Mask 计算图示</h3><pre class="mermaid">graph TB
+    subgraph "Cluster 2x2"
+        CTA0["CTA 0<br/>(0,0)"]
+        CTA1["CTA 1<br/>(1,0)"]
+        CTA2["CTA 2<br/>(0,1)"]
+        CTA3["CTA 3<br/>(1,1)"]
+    end
+
+    subgraph "Matrix A Masks"
+        MA0["CTA 0: mask_a=0b0101<br/>广播到 CTA 0,2"]
+        MA1["CTA 1: mask_a=0b1010<br/>广播到 CTA 1,3"]
+    end
+
+    subgraph "Matrix B Masks"
+        MB0["CTA 0: mask_b=0b0011<br/>广播到 CTA 0,1"]
+        MB2["CTA 2: mask_b=0b1100<br/>广播到 CTA 2,3"]
+    end
+
+    CTA0 -.-> MA0
+    CTA1 -.-> MA1
+    CTA2 -.-> MA0
+    CTA3 -.-> MA1
+
+    CTA0 -.-> MB0
+    CTA1 -.-> MB0
+    CTA2 -.-> MB2
+    CTA3 -.-> MB2
+
+    style MA0 fill:#e3f2fd
+    style MA1 fill:#e3f2fd
+    style MB0 fill:#fff3e0
+    style MB2 fill:#fff3e0</pre>
+
+<hr>
+<h2 id="4-create-tma-multicast-mask-函数"><a href="#4-create-tma-multicast-mask-函数" class="headerlink" title="4. create_tma_multicast_mask 函数"></a>4. create_tma_multicast_mask 函数</h2><h3 id="4-1-通用版本"><a href="#4-1-通用版本" class="headerlink" title="4.1 通用版本"></a>4.1 通用版本</h3><p>CuTe 提供了通用的 multicast mask 创建函数：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:1439-1469</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">class</span> <span class="title class_">CTA_Layout</span>, <span class="keyword">class</span> <span class="title class_">CTA_Coord</span>&gt;</span><br><span class="line"><span class="function">CUTE_HOST_DEVICE <span class="keyword">constexpr</span></span></span><br><span class="line"><span class="function"><span class="type">uint16_t</span></span></span><br><span class="line"><span class="function"><span class="title">create_tma_multicast_mask</span><span class="params">(CTA_Layout <span class="type">const</span>&amp; cta_layout,    <span class="comment">// Cluster 布局</span></span></span></span><br><span class="line"><span class="params"><span class="function">                          CTA_Coord  <span class="type">const</span>&amp; cta_coord)</span>     <span class="comment">// 当前 CTA 坐标</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 将坐标分解为参与 multicast 的部分和不参与的部分</span></span><br><span class="line">    <span class="keyword">auto</span> [rest_coord, mcast_coord] = <span class="built_in">slice_and_offset</span>(cta_coord, cta_layout);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取 multicast 相关的子布局</span></span><br><span class="line">    <span class="keyword">auto</span> mcast_layout = cta_layout.<span class="built_in">slice</span>(rest_coord);</span><br><span class="line"></span><br><span class="line">    <span class="type">uint16_t</span> mcast_mask = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 优化路径：rank-1 且深度 &lt;= 1</span></span><br><span class="line">    <span class="function"><span class="keyword">if</span> <span class="title">constexpr</span> <span class="params">(rank(mcast_layout) == <span class="number">1</span> &amp;&amp; depth(mcast_layout) &lt;= <span class="number">1</span>)</span> </span>&#123;</span><br><span class="line">        <span class="comment">// 位 smearing 技术</span></span><br><span class="line">        mcast_mask = <span class="built_in">uint16_t</span>(<span class="number">1</span>) &lt;&lt; mcast_coord;</span><br><span class="line">        mcast_mask |= mcast_mask &lt;&lt; (<span class="number">1</span> * <span class="built_in">stride</span>&lt;<span class="number">0</span>&gt;(mcast_layout));</span><br><span class="line">        mcast_mask |= mcast_mask &lt;&lt; (<span class="number">2</span> * <span class="built_in">stride</span>&lt;<span class="number">0</span>&gt;(mcast_layout));</span><br><span class="line">        mcast_mask |= mcast_mask &lt;&lt; (<span class="number">4</span> * <span class="built_in">stride</span>&lt;<span class="number">0</span>&gt;(mcast_layout));</span><br><span class="line">        mcast_mask |= mcast_mask &lt;&lt; (<span class="number">8</span> * <span class="built_in">stride</span>&lt;<span class="number">0</span>&gt;(mcast_layout));</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 通用路径：遍历所有位置</span></span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; <span class="built_in">size</span>(mcast_layout); ++i) &#123;</span><br><span class="line">            mcast_mask |= (<span class="built_in">uint16_t</span>(<span class="number">1</span>) &lt;&lt; <span class="built_in">mcast_layout</span>(i));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> mcast_mask;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-2-带-Mode-参数的版本"><a href="#4-2-带-Mode-参数的版本" class="headerlink" title="4.2 带 Mode 参数的版本"></a>4.2 带 Mode 参数的版本</h3><p>用于指定沿哪个维度进行 multicast：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:1475-1479</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="type">int</span>... Mode, <span class="keyword">class</span> <span class="title class_">CTA_Layout</span>, <span class="keyword">class</span> <span class="title class_">CTA_Coord</span>&gt;</span><br><span class="line"><span class="function">CUTE_HOST_DEVICE <span class="keyword">constexpr</span></span></span><br><span class="line"><span class="function"><span class="type">uint16_t</span></span></span><br><span class="line"><span class="function"><span class="title">create_tma_multicast_mask</span><span class="params">(CTA_Layout <span class="type">const</span>&amp; cta_layout,</span></span></span><br><span class="line"><span class="params"><span class="function">                          CTA_Coord  <span class="type">const</span>&amp; cta_coord)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 只保留指定 Mode 的坐标，其他设为 0</span></span><br><span class="line">    <span class="keyword">auto</span> proj_coord = cute::<span class="built_in">make_tuple</span>(</span><br><span class="line">        cute::conditional_return&lt;cute::is_one_of&lt;Int&lt;Mode&gt;...&gt;::<span class="keyword">template</span> eval&lt;Int&lt;I&gt;&gt;()&gt;(</span><br><span class="line">            <span class="built_in">get</span>&lt;I&gt;(cta_coord), Int&lt;<span class="number">0</span>&gt;&#123;&#125;)...</span><br><span class="line">    );</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">create_tma_multicast_mask</span>(cta_layout, proj_coord);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>使用示例</strong>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cutlass/gemm/collective/sm90_sparse_mma_tma_gmma_ss_warpspecialized.hpp:425-431</span></span><br><span class="line">Layout cta_layout_mnk = <span class="built_in">make_layout</span>(ClusterShape&#123;&#125;);</span><br><span class="line"><span class="keyword">auto</span> cta_coord_mnk = cta_layout_mnk.<span class="built_in">get_flat_coord</span>(block_rank_in_cluster);</span><br><span class="line"></span><br><span class="line"><span class="comment">// Mode&lt;1&gt; = N 方向，用于矩阵 A</span></span><br><span class="line"><span class="type">uint16_t</span> mcast_mask_a = <span class="built_in">create_tma_multicast_mask</span>&lt;<span class="number">1</span>&gt;(cta_layout_mnk, cta_coord_mnk);</span><br><span class="line"></span><br><span class="line"><span class="comment">// Mode&lt;0&gt; = M 方向，用于矩阵 B</span></span><br><span class="line"><span class="type">uint16_t</span> mcast_mask_b = <span class="built_in">create_tma_multicast_mask</span>&lt;<span class="number">0</span>&gt;(cta_layout_mnk, cta_coord_mnk);</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="5-TMA-Multicast-指令"><a href="#5-TMA-Multicast-指令" class="headerlink" title="5. TMA Multicast 指令"></a>5. TMA Multicast 指令</h2><h3 id="5-1-PTX-指令格式"><a href="#5-1-PTX-指令格式" class="headerlink" title="5.1 PTX 指令格式"></a>5.1 PTX 指令格式</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">cp.async.bulk.tensor.&#123;dim&#125;d.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster.L2::cache_hint</span><br><span class="line">    [smem_ptr], [tma_desc, &#123;coords&#125;], [mbar_ptr], multicast_mask, cache_hint;</span><br></pre></td></tr></table></figure>
+
+<p>关键修饰符：</p>
+<ul>
+<li><code>.multicast::cluster</code>：启用 cluster 内 multicast</li>
+<li><code>multicast_mask</code>：16-bit 掩码，指示目标 CTA</li>
+</ul>
+<h3 id="5-2-实现代码"><a href="#5-2-实现代码" class="headerlink" title="5.2 实现代码"></a>5.2 实现代码</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/arch/copy_sm90_tma.hpp:626-652</span></span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">SM90_TMA_LOAD_MULTICAST_1D</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="function">CUTE_HOST_DEVICE <span class="type">static</span> <span class="type">void</span></span></span><br><span class="line"><span class="function">  <span class="title">copy</span><span class="params">(<span class="type">void</span> <span class="type">const</span>* desc_ptr,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">uint64_t</span>* mbar_ptr,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">uint16_t</span> multicast_mask,     <span class="comment">// &lt;-- multicast 掩码</span></span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">uint64_t</span> cache_hint,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">void</span>* smem_ptr,</span></span></span><br><span class="line"><span class="params"><span class="function">       <span class="type">int32_t</span> <span class="type">const</span>&amp; crd0)</span></span></span><br><span class="line"><span class="function">  </span>&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> defined(CUTE_ARCH_TMA_SM90_ENABLED)</span></span><br><span class="line">    <span class="type">uint64_t</span> gmem_int_desc = <span class="built_in">reinterpret_cast</span>&lt;<span class="type">uint64_t</span>&gt;(desc_ptr);</span><br><span class="line">    <span class="type">uint32_t</span> smem_int_mbar = <span class="built_in">cast_smem_ptr_to_uint</span>(mbar_ptr);</span><br><span class="line">    <span class="type">uint32_t</span> smem_int_ptr  = <span class="built_in">cast_smem_ptr_to_uint</span>(smem_ptr);</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">      <span class="string">&quot;cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster.L2::cache_hint&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">      <span class="string">&quot; [%0], [%1, &#123;%4&#125;], [%2], %3, %5;&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">      :</span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;r&quot;</span>(smem_int_ptr),     <span class="comment">// 目标 SMEM 地址</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;l&quot;</span>(gmem_int_desc),    <span class="comment">// TMA Descriptor</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;r&quot;</span>(smem_int_mbar),    <span class="comment">// mbarrier 地址</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;h&quot;</span>(multicast_mask),   <span class="comment">// 16-bit multicast 掩码</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;r&quot;</span>(crd0),             <span class="comment">// 坐标</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;l&quot;</span>(cache_hint)        <span class="comment">// L2 缓存提示</span></span></span></span><br><span class="line"><span class="params"><span class="function">      : <span class="string">&quot;memory&quot;</span>)</span></span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="5-3-Copy-Traits-集成"><a href="#5-3-Copy-Traits-集成" class="headerlink" title="5.3 Copy_Traits 集成"></a>5.3 Copy_Traits 集成</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cute/atom/copy_traits_sm90_tma.hpp:278-296</span></span><br><span class="line"><span class="comment">// .with() 方法绑定运行时参数</span></span><br><span class="line"><span class="function">CUTE_HOST_DEVICE <span class="keyword">constexpr</span></span></span><br><span class="line"><span class="function">Copy_Traits&lt;SM90_TMA_LOAD_MULTICAST_OP, NumBitsPerTMA&gt;</span></span><br><span class="line"><span class="function"><span class="title">with</span><span class="params">(<span class="type">uint64_t</span>&amp; tma_load_mbar,</span></span></span><br><span class="line"><span class="params"><span class="function">     <span class="type">uint16_t</span> <span class="type">const</span>&amp; multicast_mask,</span></span></span><br><span class="line"><span class="params"><span class="function">     TMA::CacheHintSm90 <span class="type">const</span>&amp; cache_hint = TMA::CacheHintSm90::EVICT_NORMAL)</span> <span class="type">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> &#123;</span><br><span class="line">        &amp;tma_desc_,</span><br><span class="line">        &amp;tma_load_mbar,</span><br><span class="line">        multicast_mask,</span><br><span class="line">        <span class="built_in">static_cast</span>&lt;<span class="type">uint64_t</span>&gt;(cache_hint)</span><br><span class="line">    &#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="6-在-GEMM-Collective-中的应用"><a href="#6-在-GEMM-Collective-中的应用" class="headerlink" title="6. 在 GEMM Collective 中的应用"></a>6. 在 GEMM Collective 中的应用</h2><h3 id="6-1-Warp-Specialized-Mainloop"><a href="#6-1-Warp-Specialized-Mainloop" class="headerlink" title="6.1 Warp-Specialized Mainloop"></a>6.1 Warp-Specialized Mainloop</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cutlass/gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp:310-390</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">class</span>... Args&gt;</span><br><span class="line"><span class="function">CUTLASS_DEVICE <span class="type">void</span></span></span><br><span class="line"><span class="function"><span class="title">load</span><span class="params">(Params <span class="type">const</span>&amp; mainloop_params,</span></span></span><br><span class="line"><span class="params"><span class="function">     MainloopPipeline pipeline,</span></span></span><br><span class="line"><span class="params"><span class="function">     PipelineState smem_pipe_write,</span></span></span><br><span class="line"><span class="params"><span class="function">     cute::tuple&lt;Args...&gt; <span class="type">const</span>&amp; load_inputs,</span></span></span><br><span class="line"><span class="params"><span class="function">     BlockCoord <span class="type">const</span>&amp; blk_coord,</span></span></span><br><span class="line"><span class="params"><span class="function">     KTileIterator k_tile_iter, <span class="type">int</span> k_tile_count,</span></span></span><br><span class="line"><span class="params"><span class="function">     <span class="type">int</span> lane_idx,</span></span></span><br><span class="line"><span class="params"><span class="function">     <span class="type">uint32_t</span> block_rank_in_cluster,</span></span></span><br><span class="line"><span class="params"><span class="function">     SharedStorage&amp; shared_storage)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 步骤 1: 计算本地 CTA 坐标</span></span><br><span class="line">    <span class="keyword">constexpr</span> <span class="type">uint32_t</span> cluster_shape_x = <span class="built_in">get</span>&lt;<span class="number">0</span>&gt;(ClusterShape&#123;&#125;);</span><br><span class="line">    uint2 cluster_local_block_id = &#123;</span><br><span class="line">        block_rank_in_cluster % cluster_shape_x,</span><br><span class="line">        block_rank_in_cluster / cluster_shape_x</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 步骤 2: 根据 CTA 坐标分区 TMA descriptor</span></span><br><span class="line">    <span class="keyword">auto</span> [tAgA, tAsA] = <span class="built_in">tma_partition_A</span>(cluster_local_block_id.y);</span><br><span class="line">    <span class="keyword">auto</span> [tBgB, tBsB] = <span class="built_in">tma_partition_B</span>(cluster_local_block_id.x);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 步骤 3: 计算 multicast mask</span></span><br><span class="line">    <span class="type">uint16_t</span> mcast_mask_a = <span class="number">0</span>;</span><br><span class="line">    <span class="type">uint16_t</span> mcast_mask_b = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> block_layout = Layout&lt;ClusterShape&gt;&#123;&#125;;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// A: 沿 N 方向广播（固定 M，遍历 N）</span></span><br><span class="line">    <span class="function">CUTLASS_PRAGMA_UNROLL</span></span><br><span class="line"><span class="function">    <span class="title">for</span> <span class="params">(<span class="type">int</span> n = <span class="number">0</span>; n &lt; size&lt;<span class="number">1</span>&gt;(block_layout); ++n)</span> </span>&#123;</span><br><span class="line">        mcast_mask_a |= (<span class="built_in">uint16_t</span>(<span class="number">1</span>) &lt;&lt; <span class="built_in">block_layout</span>(cluster_local_block_id.x, n, Int&lt;<span class="number">0</span>&gt;&#123;&#125;));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// B: 沿 M 方向广播（固定 N，遍历 M）</span></span><br><span class="line">    <span class="function">CUTLASS_PRAGMA_UNROLL</span></span><br><span class="line"><span class="function">    <span class="title">for</span> <span class="params">(<span class="type">int</span> m = <span class="number">0</span>; m &lt; size&lt;<span class="number">0</span>&gt;(block_layout); ++m)</span> </span>&#123;</span><br><span class="line">        mcast_mask_b |= (<span class="built_in">uint16_t</span>(<span class="number">1</span>) &lt;&lt; <span class="built_in">block_layout</span>(m, cluster_local_block_id.y, Int&lt;<span class="number">0</span>&gt;&#123;&#125;));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 步骤 4: Mainloop - TMA Load with Multicast</span></span><br><span class="line">    <span class="function">CUTLASS_PRAGMA_NO_UNROLL</span></span><br><span class="line"><span class="function">    <span class="title">for</span> <span class="params">( ; k_tile_count &gt; <span class="number">0</span>; --k_tile_count)</span> </span>&#123;</span><br><span class="line">        <span class="comment">// 获取 pipeline stage</span></span><br><span class="line">        pipeline.<span class="built_in">producer_acquire</span>(smem_pipe_write);</span><br><span class="line"></span><br><span class="line">        BarrierType* tma_barrier = pipeline.<span class="built_in">producer_get_barrier</span>(smem_pipe_write);</span><br><span class="line">        <span class="type">int</span> write_stage = smem_pipe_write.<span class="built_in">index</span>();</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 发起 TMA Multicast Load</span></span><br><span class="line">        <span class="built_in">copy</span>(mainloop_params.tma_load_a.<span class="built_in">with</span>(*tma_barrier, mcast_mask_a),</span><br><span class="line">             <span class="built_in">tAgA</span>(_,_,_,*k_tile_iter),</span><br><span class="line">             <span class="built_in">tAsA</span>(_,_,_,write_stage));</span><br><span class="line"></span><br><span class="line">        <span class="built_in">copy</span>(mainloop_params.tma_load_b.<span class="built_in">with</span>(*tma_barrier, mcast_mask_b),</span><br><span class="line">             <span class="built_in">tBgB</span>(_,_,_,*k_tile_iter),</span><br><span class="line">             <span class="built_in">tBsB</span>(_,_,_,write_stage));</span><br><span class="line"></span><br><span class="line">        ++k_tile_iter;</span><br><span class="line">        ++smem_pipe_write;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="6-2-执行流程时序图"><a href="#6-2-执行流程时序图" class="headerlink" title="6.2 执行流程时序图"></a>6.2 执行流程时序图</h3><pre class="mermaid">sequenceDiagram
+    participant CTA0 as CTA 0 (Producer)
+    participant CTA1 as CTA 1
+    participant TMA as TMA Unit
+    participant GMEM as Global Memory
+    participant SMEM0 as SMEM (CTA 0)
+    participant SMEM1 as SMEM (CTA 1)
+
+    Note over CTA0,CTA1: Cluster 2x1, 加载矩阵 B (mask=0b11)
+
+    CTA0->>CTA0: 计算 mcast_mask_b = 0b11
+    CTA0->>TMA: copy(tma_load_b.with(mbar, 0b11), ...)
+
+    TMA->>GMEM: 读取 B tile
+    TMA->>SMEM0: 写入数据 (multicast)
+    TMA->>SMEM1: 写入数据 (multicast)
+    TMA->>CTA0: signal mbar (CTA 0)
+    TMA->>CTA1: signal mbar (CTA 1)
+
+    Note over CTA0,CTA1: 两个 CTA 同时收到数据</pre>
+
+<hr>
+<h2 id="7-Multicast-性能优化"><a href="#7-Multicast-性能优化" class="headerlink" title="7. Multicast 性能优化"></a>7. Multicast 性能优化</h2><h3 id="7-1-最佳实践"><a href="#7-1-最佳实践" class="headerlink" title="7.1 最佳实践"></a>7.1 最佳实践</h3><ol>
+<li><p><strong>选择合适的 Cluster Shape</strong></p>
+<ul>
+<li>太小：multicast 收益有限</li>
+<li>太大：受限于 SM 资源，可能降低 occupancy</li>
+</ul>
+</li>
+<li><p><strong>对齐数据</strong></p>
+<ul>
+<li>TMA 要求 16 字节对齐</li>
+<li>Multicast 不会改变对齐要求</li>
+</ul>
+</li>
+<li><p><strong>平衡 A 和 B 的 multicast</strong></p>
+<ul>
+<li>ClusterShape &#x3D; (M, N)</li>
+<li>A multicast 因子 &#x3D; N</li>
+<li>B multicast 因子 &#x3D; M</li>
+</ul>
+</li>
+</ol>
+<h3 id="7-2-Cluster-Shape-选择指南"><a href="#7-2-Cluster-Shape-选择指南" class="headerlink" title="7.2 Cluster Shape 选择指南"></a>7.2 Cluster Shape 选择指南</h3><table>
+<thead>
+<tr>
+<th>Cluster Shape</th>
+<th>A Multicast</th>
+<th>B Multicast</th>
+<th>总带宽节省</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>(1, 1)</td>
+<td>1x</td>
+<td>1x</td>
+<td>0%</td>
+</tr>
+<tr>
+<td>(2, 1)</td>
+<td>1x</td>
+<td>2x</td>
+<td>~25%</td>
+</tr>
+<tr>
+<td>(1, 2)</td>
+<td>2x</td>
+<td>1x</td>
+<td>~25%</td>
+</tr>
+<tr>
+<td>(2, 2)</td>
+<td>2x</td>
+<td>2x</td>
+<td>~50%</td>
+</tr>
+<tr>
+<td>(4, 1)</td>
+<td>1x</td>
+<td>4x</td>
+<td>~37.5%</td>
+</tr>
+<tr>
+<td>(2, 4)</td>
+<td>4x</td>
+<td>2x</td>
+<td>~62.5%</td>
+</tr>
+</tbody></table>
+<h3 id="7-3-限制条件"><a href="#7-3-限制条件" class="headerlink" title="7.3 限制条件"></a>7.3 限制条件</h3><ul>
+<li>Cluster 最大支持 16 个 CTA（由 16-bit mask 限制）</li>
+<li>Multicast 只在同一 Cluster 内有效</li>
+<li>所有目标 CTA 的 SMEM 布局必须相同</li>
+</ul>
+<hr>
+<h2 id="8-API-总结"><a href="#8-API-总结" class="headerlink" title="8. API 总结"></a>8. API 总结</h2><table>
+<thead>
+<tr>
+<th>API</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>create_tma_multicast_mask(layout, coord)</code></td>
+<td>创建 multicast mask</td>
+</tr>
+<tr>
+<td><code>create_tma_multicast_mask&lt;Mode&gt;(layout, coord)</code></td>
+<td>沿指定 Mode 创建 mask</td>
+</tr>
+<tr>
+<td><code>tma_load.with(mbar, mask)</code></td>
+<td>绑定 mbarrier 和 mask</td>
+</tr>
+<tr>
+<td><code>SM90_TMA_LOAD_MULTICAST_Xd::copy(...)</code></td>
+<td>底层 PTX 包装</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="9-关键要点"><a href="#9-关键要点" class="headerlink" title="9. 关键要点"></a>9. 关键要点</h2><ol>
+<li><p><strong>Multicast Mask 是 16-bit</strong>：每位对应 cluster 内一个 CTA</p>
+</li>
+<li><p><strong>Layout 决定编号</strong>：<code>Layout&lt;ClusterShape&gt;</code> 将 (m,n) 映射到线性 block_id</p>
+</li>
+<li><p><strong>A&#x2F;B 不同方向</strong>：</p>
+<ul>
+<li>A 沿 N 方向广播（固定 M）</li>
+<li>B 沿 M 方向广播（固定 N）</li>
+</ul>
+</li>
+<li><p><strong>由 Producer 发起</strong>：只需一个 CTA 发起 TMA，硬件负责广播</p>
+</li>
+<li><p><strong>与 mbarrier 配合</strong>：所有目标 CTA 的 barrier 都会被 signal</p>
+</li>
+</ol>
+<hr>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass">CUTLASS GitHub 仓库</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass/blob/main/include/cutlass/gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp">sm90_mma_tma_gmma_ss_warpspecialized.hpp</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/copy_traits_sm90_tma.hpp">copy_traits_sm90_tma.hpp</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/copy_sm90_tma.hpp">copy_sm90_tma.hpp</a></li>
+<li><a target="_blank" rel="noopener" href="https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk-tensor">NVIDIA PTX ISA - TMA Multicast</a></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>CUTLASS SM90 TMA Multicast 深度解析</p><p><a href="https://drxuqian.github.io/2024/12/24/tma-multicast-deep-dive/">https://drxuqian.github.io/2024/12/24/tma-multicast-deep-dive/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>DrXuQian</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2024-12-24</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2025-12-24</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/CUTLASS/">CUTLASS</a><a class="link-muted mr-2" rel="tag" href="/tags/TMA/">TMA</a><a class="link-muted mr-2" rel="tag" href="/tags/Multicast/">Multicast</a><a class="link-muted mr-2" rel="tag" href="/tags/Cluster/">Cluster</a><a class="link-muted mr-2" rel="tag" href="/tags/SM90/">SM90</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/2024/12/24/tma-descriptor-deep-dive/"><span class="level-item">CUTLASS SM90 TMA Descriptor 深度解析</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1 is-sticky"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.jpg" alt="DrXuQian"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">DrXuQian</p><p class="is-size-6 is-block">CUDA/GPU Enthusiast</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>China</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">3</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">1</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">9</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/DrXuQian" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></div></div></div><!--!--><div class="column-right-shadow is-hidden-widescreen is-sticky"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3 is-sticky"><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-23T16:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/tma-multicast-deep-dive/">CUTLASS SM90 TMA Multicast 深度解析</a></p><p class="categories"><a href="/categories/CUTLASS/">CUTLASS</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-23T16:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/tma-descriptor-deep-dive/">CUTLASS SM90 TMA Descriptor 深度解析</a></p><p class="categories"><a href="/categories/CUTLASS/">CUTLASS</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-22T16:00:00.000Z">2024-12-23</time></p><p class="title"><a href="/2024/12/23/pipeline-barrier-ptx-mapping/">CUTLASS SM90 Pipeline 与 mbarrier 深度解析</a></p><p class="categories"><a href="/categories/CUTLASS/">CUTLASS</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2024/12/"><span class="level-start"><span class="level-item">十二月 2024</span></span><span class="level-end"><span class="level-item tag">3</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/CUTLASS/"><span class="tag">CUTLASS</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SM90/"><span class="tag">SM90</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TMA/"><span class="tag">TMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PTX/"><span class="tag">PTX</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Multicast/"><span class="tag">Multicast</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cluster/"><span class="tag">Cluster</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pipeline/"><span class="tag">Pipeline</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mbarrier/"><span class="tag">mbarrier</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/CuTe/"><span class="tag">CuTe</span><span class="tag">1</span></a></div></div></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a><p class="is-size-7"><span>&copy; 2025 DrXuQian</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a><br><span id="busuanzi_container_site_uv">共<span id="busuanzi_value_site_uv">0</span>个访客</span></p><p class="is-size-7">© 2024 DrXuQian</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><script src="/js/animation.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script type="text/javascript" id="MathJax-script" async>MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+      },
+      svg: {
+        fontCache: 'global'
+      },
+      chtml: {
+        matchFontHeight: false
+      }
+    };</script><script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    }
+  });
+  document.addEventListener('pjax:complete', function() {
+    if (typeof mermaid !== 'undefined') {
+      mermaid.init(undefined, '.mermaid');
+    }
+  });
+</script>
+<script src="/js/theme-toggle.js"></script>
+</body></html>
