@@ -58,6 +58,48 @@ CUTLASS 定义了两种 barrier 类型：
 
 源码位置：[barrier.h](https://github.com/NVIDIA/cutlass/blob/main/include/cutlass/arch/barrier.h)
 
+### 1.5 双 Barrier 架构
+
+Pipeline 使用双 Barrier 实现生产者-消费者同步：
+
+```mermaid
+graph LR
+    subgraph "Pipeline Stage [i]"
+        FB[FullBarrier<br/>ClusterTransactionBarrier]
+        EB[EmptyBarrier<br/>ClusterBarrier]
+        BUF[(SMEM Buffer)]
+    end
+
+    subgraph Producer
+        P1[producer_acquire]
+        P2[TMA Load]
+        P3[TMA Complete]
+    end
+
+    subgraph Consumer
+        C1[consumer_wait]
+        C2[MMA Compute]
+        C3[consumer_release]
+    end
+
+    P1 -->|wait| EB
+    P1 -->|arrive_and_expect_tx| FB
+    P2 -->|write| BUF
+    P3 -->|complete_tx| FB
+
+    C1 -->|wait| FB
+    BUF -->|read| C2
+    C3 -->|arrive| EB
+
+    style FB fill:#e1f5fe
+    style EB fill:#fff3e0
+```
+
+| Barrier | 类型 | 谁 Signal | 谁 Wait | 含义 |
+|---------|------|----------|---------|------|
+| **FullBarrier** | `ClusterTransactionBarrier` | Producer (TMA) | Consumer | "Data is ready" |
+| **EmptyBarrier** | `ClusterBarrier` | Consumer | Producer | "Buffer is free" |
+
 ---
 
 ## 2. PipelineState 详解
@@ -114,6 +156,28 @@ void operator++() {
 ```
 
 **关键点**：当 `index_` 从 `Stages-1` 回绕到 `0` 时，`phase_` 翻转。这确保了 barrier 能区分不同轮次的操作。
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "Stage 0" as S0
+    state "Stage 1" as S1
+    state "Stage 2" as S2
+    state "Stage 3" as S3
+
+    [*] --> S0: index=0, phase=0
+    S0 --> S1: ++index
+    S1 --> S2: ++index
+    S2 --> S3: ++index
+    S3 --> S0: index回绕, phase翻转
+
+    note right of S3
+        当 index == Stages 时:
+        index = 0
+        phase ^= 1
+    end note
+```
 
 ### 2.4 advance 方法
 
@@ -206,6 +270,40 @@ struct SharedStorage {
 每个 Pipeline stage 都有一对 barrier：
 - **full_barrier_**：Producer 填充数据后 signal，Consumer 等待
 - **empty_barrier_**：Consumer 使用完毕后 signal，Producer 等待
+
+```mermaid
+graph TB
+    subgraph "SharedStorage (SMEM)"
+        subgraph "Stage 0"
+            FB0[full_barrier_0]
+            EB0[empty_barrier_0]
+        end
+        subgraph "Stage 1"
+            FB1[full_barrier_1]
+            EB1[empty_barrier_1]
+        end
+        subgraph "Stage 2"
+            FB2[full_barrier_2]
+            EB2[empty_barrier_2]
+        end
+        subgraph "Stage N-1"
+            FBN[full_barrier_N-1]
+            EBN[empty_barrier_N-1]
+        end
+    end
+
+    FULL[full_barrier_ptr_] --> FB0
+    EMPTY[empty_barrier_ptr_] --> EB0
+
+    style FB0 fill:#e3f2fd
+    style FB1 fill:#e3f2fd
+    style FB2 fill:#e3f2fd
+    style FBN fill:#e3f2fd
+    style EB0 fill:#fff8e1
+    style EB1 fill:#fff8e1
+    style EB2 fill:#fff8e1
+    style EBN fill:#fff8e1
+```
 
 ### 3.3 ThreadCategory 枚举
 
@@ -700,6 +798,39 @@ struct ClusterTransactionBarrier : public ClusterBarrier {
 ---
 
 ## 9. 完整工作流程示例
+
+下图展示了 Producer 和 Consumer 之间的交互时序：
+
+```mermaid
+sequenceDiagram
+    participant P as Producer
+    participant FB as FullBarrier
+    participant EB as EmptyBarrier
+    participant BUF as SMEM Buffer
+    participant C as Consumer
+
+    Note over P,C: Stage i 的一次完整迭代
+
+    rect rgb(232, 245, 233)
+        Note over P: Producer Phase
+        P->>EB: wait(phase) - 等待空间
+        EB-->>P: 空间已释放
+        P->>FB: arrive_and_expect_tx(bytes)
+        P->>BUF: TMA Load (异步)
+        Note over FB: TMA完成后自动<br/>complete_tx
+    end
+
+    rect rgb(227, 242, 253)
+        Note over C: Consumer Phase
+        C->>FB: wait(phase) - 等待数据
+        FB-->>C: 数据已就绪
+        BUF->>C: 读取数据
+        Note over C: MMA 计算
+        C->>EB: arrive() - 释放空间
+    end
+
+    Note over P,C: Phase 翻转后进入下一轮
+```
 
 ```cpp
 // Producer 线程（TMA 加载器）
