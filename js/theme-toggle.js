@@ -2,6 +2,19 @@
 (function() {
     'use strict';
 
+    // Detect if current page is a post page and add class to body
+    function detectPostPage() {
+        // Check if URL matches post pattern (e.g., /2024/12/23/post-name/)
+        const path = window.location.pathname;
+        const isPost = /^\/\d{4}\/\d{2}\/\d{2}\//.test(path);
+
+        if (isPost) {
+            document.body.classList.add('is-post-page');
+        } else {
+            document.body.classList.remove('is-post-page');
+        }
+    }
+
     // Get saved theme or default to light
     function getTheme() {
         return localStorage.getItem('theme') || 'light';
@@ -60,6 +73,9 @@
         // Apply saved theme immediately
         applyTheme(getTheme());
 
+        // Detect post page and hide right sidebar
+        detectPostPage();
+
         // Create toggle button when DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', createToggleButton);
@@ -78,6 +94,9 @@
         init();
     }
 
-    // Re-create button after pjax navigation (Icarus uses pjax)
-    document.addEventListener('pjax:complete', createToggleButton);
+    // Re-create button and detect page type after pjax navigation (Icarus uses pjax)
+    document.addEventListener('pjax:complete', function() {
+        createToggleButton();
+        detectPostPage();
+    });
 })();

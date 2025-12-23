@@ -193,6 +193,29 @@ html[data-theme="dark"] table tbody tr:nth-child(even) {
 
 /* ===== End Dark Mode Styles ===== */
 
+/* ===== Hide right sidebar on post pages ===== */
+body.is-post-page .column.column-right {
+    display: none !important;
+}
+
+/* When right sidebar is hidden, expand main content */
+body.is-post-page .column.column-main.is-8-tablet.is-8-desktop.is-6-widescreen {
+    width: 70% !important;
+    flex: none !important;
+}
+
+body.is-post-page .column.column-left.is-4-tablet.is-4-desktop.is-3-widescreen {
+    width: 30% !important;
+    flex: none !important;
+}
+
+/* For two-column layout on post pages */
+body.is-post-page .columns {
+    justify-content: center;
+}
+
+/* ===== End Hide Right Sidebar ===== */
+
 /* Increase container max-width */
 html body .container {
     max-width: 1600px !important;
