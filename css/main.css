@@ -20,10 +20,10 @@
   --btn-default-hover-bg: #222;
   --btn-default-hover-color: #fff;
   --btn-default-hover-border-color: #222;
-  --highlight-background: #f3f3f3;
-  --highlight-foreground: #444;
-  --highlight-gutter-background: #e1e1e1;
-  --highlight-gutter-foreground: #555;
+  --highlight-background: #fafafa;
+  --highlight-foreground: #383a42;
+  --highlight-gutter-background: #e6e6e7;
+  --highlight-gutter-foreground: #4b4d54;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -49,10 +49,10 @@
     --btn-default-hover-bg: #666;
     --btn-default-hover-color: #ccc;
     --btn-default-hover-border-color: #666;
-    --highlight-background: #1a1b26;
-    --highlight-foreground: #9aa5ce;
-    --highlight-gutter-background: #262836;
-    --highlight-gutter-foreground: #8d97bd;
+    --highlight-background: #282c34;
+    --highlight-foreground: #abb2bf;
+    --highlight-gutter-background: #353941;
+    --highlight-gutter-foreground: #9da4b1;
     color-scheme: dark;
   }
   img {
@@ -225,7 +225,7 @@ body {
   background: var(--body-bg-color);
   box-sizing: border-box;
   color: var(--text-color);
-  font-family: Lato, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: Noto Sans SC, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 1em;
   line-height: 2;
   min-height: 100%;
@@ -238,7 +238,7 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: Lato, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: Noto Serif SC, Noto Sans SC, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-weight: bold;
   line-height: 1.5;
   margin: 30px 0 15px;
@@ -412,114 +412,87 @@ pre code.hljs {
 code.hljs {
   padding: 3px 5px
 }
-/*!
-  Theme: Default
-  Description: Original highlight.js style
-  Author: (c) Ivan Sagalaev <maniac@softwaremaniacs.org>
-  Maintainer: @highlightjs/core-team
-  Website: https://highlightjs.org/
-  License: see project LICENSE
-  Touched: 2021
-*/
 /*
-This is left on purpose making default.css the single file that can be lifted
-as-is from the repository directly without the need for a build step
 
-Typically this "required" baseline CSS is added by `makestuff.js` during build.
+Atom One Light by Daniel Gamage
+Original One Light Syntax theme from https://github.com/atom/one-light-syntax
+
+base:    #fafafa
+mono-1:  #383a42
+mono-2:  #686b77
+mono-3:  #a0a1a7
+hue-1:   #0184bb
+hue-2:   #4078f2
+hue-3:   #a626a4
+hue-4:   #50a14f
+hue-5:   #e45649
+hue-5-2: #c91243
+hue-6:   #986801
+hue-6-2: #c18401
+
 */
-pre code.hljs {
-  display: block;
-  overflow-x: auto;
-  padding: 1em
-}
-code.hljs {
-  padding: 3px 5px
-}
-/* end baseline CSS */
 .hljs {
-  background: #F3F3F3;
-  color: #444
+  color: #383a42;
+  background: #fafafa
 }
-/* Base color: saturation 0; */
-.hljs-subst {
-  /* default */
-  
+.hljs-comment,
+.hljs-quote {
+  color: #a0a1a7;
+  font-style: italic
 }
-/* purposely ignored */
-.hljs-formula,
-.hljs-attr,
-.hljs-property,
-.hljs-params {
-  
-}
-.hljs-comment {
-  color: #697070
-}
-.hljs-tag,
-.hljs-punctuation {
-  color: #444a
-}
-.hljs-tag .hljs-name,
-.hljs-tag .hljs-attr {
-  color: #444
-}
-.hljs-keyword,
-.hljs-attribute,
-.hljs-selector-tag,
-.hljs-meta .hljs-keyword,
 .hljs-doctag,
-.hljs-name {
-  font-weight: bold
+.hljs-keyword,
+.hljs-formula {
+  color: #a626a4
 }
-/* User color: hue: 0 */
-.hljs-type,
+.hljs-section,
+.hljs-name,
+.hljs-selector-tag,
+.hljs-deletion,
+.hljs-subst {
+  color: #e45649
+}
+.hljs-literal {
+  color: #0184bb
+}
 .hljs-string,
-.hljs-number,
-.hljs-selector-id,
-.hljs-selector-class,
-.hljs-quote,
-.hljs-template-tag,
-.hljs-deletion {
-  color: #880000
-}
-.hljs-title,
-.hljs-section {
-  color: #880000;
-  font-weight: bold
-}
 .hljs-regexp,
-.hljs-symbol,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta .hljs-string {
+  color: #50a14f
+}
+.hljs-attr,
 .hljs-variable,
 .hljs-template-variable,
-.hljs-link,
+.hljs-type,
+.hljs-selector-class,
 .hljs-selector-attr,
-.hljs-operator,
-.hljs-selector-pseudo {
-  color: #ab5656
+.hljs-selector-pseudo,
+.hljs-number {
+  color: #986801
 }
-/* Language color: hue: 90; */
-.hljs-literal {
-  color: #695
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-meta,
+.hljs-selector-id,
+.hljs-title {
+  color: #4078f2
 }
 .hljs-built_in,
-.hljs-bullet,
-.hljs-code,
-.hljs-addition {
-  color: #397300
+.hljs-title.class_,
+.hljs-class .hljs-title {
+  color: #c18401
 }
-/* Meta color: hue: 200 */
-.hljs-meta {
-  color: #1f7199
-}
-.hljs-meta .hljs-string {
-  color: #38a
-}
-/* Misc effects */
 .hljs-emphasis {
   font-style: italic
 }
 .hljs-strong {
   font-weight: bold
+}
+.hljs-link {
+  text-decoration: underline
 }
 @media (prefers-color-scheme: dark) {
 pre code.hljs {
@@ -530,111 +503,87 @@ pre code.hljs {
 code.hljs {
   padding: 3px 5px
 }
-/*!
-  Theme: Tokyo-night-Dark
-  origin: https://github.com/enkia/tokyo-night-vscode-theme
-  Description: Original highlight.js style
-  Author: (c) Henri Vandersleyen <hvandersleyen@gmail.com>
-  License: see project LICENSE
-  Touched: 2022
+/*
+
+Atom One Dark by Daniel Gamage
+Original One Dark Syntax theme from https://github.com/atom/one-dark-syntax
+
+base:    #282c34
+mono-1:  #abb2bf
+mono-2:  #818896
+mono-3:  #5c6370
+hue-1:   #56b6c2
+hue-2:   #61aeee
+hue-3:   #c678dd
+hue-4:   #98c379
+hue-5:   #e06c75
+hue-5-2: #be5046
+hue-6:   #d19a66
+hue-6-2: #e6c07b
+
 */
-/*  Comment */
-.hljs-meta,
-.hljs-comment {
-  color: #565f89
+.hljs {
+  color: #abb2bf;
+  background: #282c34
 }
-/* Red */
-/*INFO: This keyword, HTML elements, Regex group symbol, CSS units, Terminal Red */
-.hljs-tag,
+.hljs-comment,
+.hljs-quote {
+  color: #5c6370;
+  font-style: italic
+}
 .hljs-doctag,
-.hljs-selector-id,
-.hljs-selector-class,
-.hljs-regexp,
-.hljs-template-tag,
-.hljs-selector-pseudo,
-.hljs-selector-attr,
-.hljs-variable.language_,
-.hljs-deletion {
-  color: #f7768e
+.hljs-keyword,
+.hljs-formula {
+  color: #c678dd
 }
-/*Orange */
-/*INFO: Number and Boolean constants, Language support constants */
+.hljs-section,
+.hljs-name,
+.hljs-selector-tag,
+.hljs-deletion,
+.hljs-subst {
+  color: #e06c75
+}
+.hljs-literal {
+  color: #56b6c2
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta .hljs-string {
+  color: #98c379
+}
+.hljs-attr,
 .hljs-variable,
 .hljs-template-variable,
-.hljs-number,
-.hljs-literal,
 .hljs-type,
-.hljs-params,
-.hljs-link {
-  color: #ff9e64
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-number {
+  color: #d19a66
 }
-/*  Yellow */
-/* INFO:  	Function parameters, Regex character sets, Terminal Yellow */
-.hljs-built_in,
-.hljs-attribute {
-  color: #e0af68
-}
-/* cyan */
-/* INFO: Language support functions, CSS HTML elements */
-.hljs-selector-tag {
-  color: #2ac3de
-}
-/* light blue */
-/* INFO: Object properties, Regex quantifiers and flags, Markdown headings, Terminal Cyan, Markdown code, Import/export keywords */
-.hljs-keyword,
-.hljs-title.function_,
-.hljs-title,
-.hljs-title.class_,
-.hljs-title.class_.inherited__,
-.hljs-subst,
-.hljs-property {
-  color: #7dcfff
-}
-/*Green*/
-/* INFO: Object literal keys, Markdown links, Terminal Green */
-.hljs-selector-tag {
-  color: #73daca
-}
-/*Green(er) */
-/* INFO: Strings, CSS class names */
-.hljs-quote,
-.hljs-string,
 .hljs-symbol,
 .hljs-bullet,
-.hljs-addition {
-  color: #9ece6a
+.hljs-link,
+.hljs-meta,
+.hljs-selector-id,
+.hljs-title {
+  color: #61aeee
 }
-/* Blue */
-/* INFO:  	Function names, CSS property names, Terminal Blue */
-.hljs-code,
-.hljs-formula,
-.hljs-section {
-  color: #7aa2f7
-}
-/* Magenta */
-/*INFO: Control Keywords, Storage Types, Regex symbols and operators, HTML Attributes, Terminal Magenta */
-.hljs-name,
-.hljs-keyword,
-.hljs-operator,
-.hljs-keyword,
-.hljs-char.escape_,
-.hljs-attr {
-  color: #bb9af7
-}
-/* white*/
-/* INFO: Variables, Class names, Terminal White */
-.hljs-punctuation {
-  color: #c0caf5
-}
-.hljs {
-  background: #1a1b26;
-  color: #9aa5ce
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-class .hljs-title {
+  color: #e6c07b
 }
 .hljs-emphasis {
   font-style: italic
 }
 .hljs-strong {
   font-weight: bold
+}
+.hljs-link {
+  text-decoration: underline
 }
 }
 .highlight:hover .copy-btn,
@@ -716,7 +665,7 @@ pre .caption a:hover {
 }
 pre,
 code {
-  font-family: consolas, Menlo, monospace, 'PingFang SC', 'Microsoft YaHei';
+  font-family: JetBrains Mono, consolas, Menlo, monospace, 'PingFang SC', 'Microsoft YaHei';
 }
 code {
   border-radius: 3px;
@@ -1287,7 +1236,7 @@ pre code {
   color: var(--brand-hover-color);
 }
 .site-title {
-  font-family: Lato, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: Noto Serif SC, Noto Sans SC, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 1.375em;
   font-weight: normal;
   line-height: 1.5;
@@ -1390,6 +1339,35 @@ pre code {
 .use-motion .menu-item {
   visibility: hidden;
 }
+.book-mark-link {
+  border-bottom: 0;
+  position: fixed;
+  top: -10px;
+  transition: top 0.3s;
+  right: 30px;
+}
+@media (max-width: 991px) {
+  .book-mark-link {
+    right: 20px;
+  }
+}
+@media (max-width: 991px) {
+  .book-mark-link {
+    display: none;
+  }
+}
+.book-mark-link::before {
+  color: #222;
+  font-size: 32px;
+  line-height: 1;
+  content: '\f02e';
+  font-family: 'Font Awesome 7 Free';
+  font-weight: 900;
+}
+.book-mark-link:hover,
+.book-mark-link-fixed {
+  top: -2px;
+}
 @media (max-width: 991px) {
   .sidebar {
     left: -320px;
@@ -1427,9 +1405,10 @@ pre code {
     margin-bottom: 10px;
     margin-right: 10px;
     vertical-align: middle;
+    transition: all 0.2s ease-in-out;
   }
   .links-of-author a::before {
-    background: #d76e79;
+    background: #74ff9d;
     display: inline-block;
     margin-right: 3px;
     transform: translateY(-2px);
@@ -1649,21 +1628,6 @@ pre code {
   line-height: 1.8;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.post-toc .nav .nav-child {
-  --height: 0;
-  height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition-property: height, opacity, visibility;
-  transition: 0.2s ease-in-out;
-  visibility: hidden;
-}
-.post-toc .nav .active > .nav-child {
-  height: var(--height, auto);
-  opacity: 1;
-  visibility: unset;
 }
 .post-toc .nav .active > a {
   border-bottom-color: #fc6423;
@@ -1680,6 +1644,10 @@ pre code {
   max-width: 120px;
   padding: 2px;
   border-radius: 50%;
+  transition: transform 1s ease-out;
+}
+.site-author-image:hover {
+  transform: rotateZ(360deg);
 }
 .site-author-name {
   color: var(--text-color);
@@ -1776,6 +1744,30 @@ pre code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sidebar-post-related {
+  font-size: 0.8125em;
+  padding: 18px 0 0 0;
+}
+.popular-posts {
+  margin: 0;
+  padding: 1em 0;
+  text-align: left;
+}
+.popular-posts .popular-posts-item {
+  display: block;
+}
+.popular-posts .popular-posts-item .popular-posts-link {
+  border-bottom: 0;
+  display: block;
+  padding: 5px 20px;
+  transition: background 0.2s ease-in-out;
+}
+.popular-posts .popular-posts-item .popular-posts-link:hover {
+  background: var(--menu-item-bg-color);
+}
+.popular-posts .popular-posts-item .popular-posts-time {
+  color: #999;
+}
 .footer {
   color: #999;
   font-size: 0.875em;
@@ -1833,7 +1825,7 @@ pre code {
   width: 100%;
 }
 .with-love {
-  color: #f00;
+  color: #f43f5e;
   display: inline-block;
   margin: 0 5px;
   animation: icon-animate 1.33s ease-in-out infinite;
@@ -1896,7 +1888,7 @@ pre code {
 }
 .reading-progress-bar {
   --progress: 0;
-  background: #37c6c0;
+  background: #3b82f6;
   height: 3px;
   position: fixed;
   z-index: 50;
@@ -2053,7 +2045,7 @@ pre code {
   width: 4px;
 }
 .post-body {
-  font-family: Lato, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: Noto Sans SC, Noto Sans SC, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   overflow-wrap: break-word;
 }
 @media (min-width: 1200px) {
@@ -2242,7 +2234,7 @@ pre code {
 }
 .posts-expand .post-meta-container {
   color: #999;
-  font-family: Lato, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: Noto Sans SC, Noto Sans SC, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 0.75em;
   margin-top: 3px;
 }
@@ -2878,17 +2870,6 @@ header.header {
     display: none;
   }
 }
-.main-menu .menu-item-active::after {
-  background: #bbb;
-  border-radius: 50%;
-  content: ' ';
-  height: 6px;
-  margin-top: -3px;
-  position: absolute;
-  right: 15px;
-  top: 50%;
-  width: 6px;
-}
 .sub-menu {
   margin: 0;
   padding: 6px 0;
@@ -3070,4 +3051,219 @@ header.header {
   .comments {
     padding: 10px 12px;
   }
+}
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+.post-body {
+  line-height: 1.8;
+  letter-spacing: 0.01em;
+}
+code {
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", Monaco, "Andale Mono", monospace !important;
+  font-size: 0.875em;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  background: rgba(59,130,246,0.1);
+}
+.post-body code:not([class*="language-"]) {
+  color: #3b82f6;
+  background: rgba(59,130,246,0.08);
+  border-radius: 4px;
+}
+figure.highlight {
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+  margin: 1.5em 0;
+  overflow: hidden;
+}
+figure.highlight pre {
+  padding: 1em;
+  line-height: 1.6;
+}
+figure.highlight .line {
+  min-height: 1.5em;
+}
+.highlight figcaption {
+  background: linear-gradient(180deg, #e8e8e8 0%, #d8d8d8 100%);
+  padding: 8px 12px;
+  font-size: 0.85em;
+}
+.post-block {
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+.post-block:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+}
+.post-title,
+.post-title-link {
+  font-weight: 700;
+  transition: color 0.2s ease;
+}
+.post-title:hover,
+.post-title-link:hover {
+  color: #3b82f6;
+}
+.sidebar-inner {
+  border-radius: 12px;
+}
+.site-author-name {
+  font-weight: 700;
+  font-size: 1.2em;
+  margin-top: 0.5em;
+}
+.site-description {
+  color: #64748b;
+  font-size: 0.9em;
+}
+.links-of-author a {
+  transition: all 0.2s ease;
+}
+.links-of-author a:hover {
+  color: #3b82f6 !important;
+  transform: scale(1.1);
+}
+.post-toc .nav-item {
+  line-height: 1.6;
+}
+.post-toc .nav-link {
+  transition: all 0.2s ease;
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+}
+.post-toc .nav-link:hover {
+  color: #3b82f6;
+  border-left-color: #3b82f6;
+}
+.post-toc .nav-link.active {
+  color: #3b82f6;
+  border-left-color: #3b82f6;
+  font-weight: 600;
+}
+.tag-cloud a {
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.tag-cloud a:hover {
+  background: rgba(59,130,246,0.1);
+  color: #3b82f6;
+}
+.category-list-item {
+  transition: all 0.2s ease;
+}
+.category-list-item:hover {
+  transform: translateX(4px);
+}
+a {
+  transition: color 0.2s ease;
+}
+a:hover {
+  color: #3b82f6;
+}
+.btn {
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+}
+.back-to-top {
+  border-radius: 50%;
+  background: #3b82f6;
+  color: #fff;
+  transition: all 0.3s ease;
+}
+.back-to-top:hover {
+  background: #1e6ff5;
+  transform: translateY(-3px);
+}
+.header-inner {
+  backdrop-filter: blur(10px);
+}
+.menu-item a {
+  transition: all 0.2s ease;
+  position: relative;
+}
+.menu-item a::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: #3b82f6;
+  transition: all 0.3s ease;
+  transform: translateX(-50%);
+}
+.menu-item a:hover::after {
+  width: 80%;
+}
+[data-theme="dark"] .post-body code:not([class*="language-"]) {
+  background: rgba(139,92,246,0.15);
+  color: #a78bfa;
+}
+[data-theme="dark"] figure.highlight {
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+}
+[data-theme="dark"] .highlight figcaption {
+  background: linear-gradient(180deg, #2d3748 0%, #1a202c 100%);
+}
+blockquote {
+  border-left: 4px solid #3b82f6;
+  background: rgba(59,130,246,0.05);
+  padding: 1em 1.5em;
+  margin: 1.5em 0;
+  border-radius: 0 8px 8px 0;
+}
+blockquote p {
+  margin: 0;
+}
+table {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+table th {
+  background: #3b82f6;
+  color: #fff;
+  font-weight: 600;
+}
+table tr:nth-child(even) {
+  background: rgba(59,130,246,0.05);
+}
+.post-body img {
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+}
+.post-body img:hover {
+  transform: scale(1.02);
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2);
+}
+::selection {
+  background: rgba(59,130,246,0.3);
+  color: inherit;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+.reading-progress-bar {
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6) !important;
 }
