@@ -1,0 +1,68 @@
+/* Custom styles for wider page width */
+
+/* Increase container max-width */
+.container {
+    max-width: 1400px !important;
+}
+
+/* Wider content area - main column */
+.is-8-desktop, .is-8-widescreen {
+    width: 70% !important;
+    flex: none !important;
+}
+
+/* Adjust sidebar width */
+.is-4-desktop, .is-4-widescreen {
+    width: 30% !important;
+    flex: none !important;
+}
+
+/* For single column layout, use full width */
+.is-12 {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Wider card content */
+.card-content {
+    padding: 1.5rem 2rem;
+}
+
+/* Code block full width */
+.content pre {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* Article content wider */
+.article-content {
+    max-width: 100%;
+}
+
+/* Large screens */
+@media screen and (min-width: 1408px) {
+    .container {
+        max-width: 1600px !important;
+    }
+}
+
+@media screen and (min-width: 1216px) {
+    .container {
+        max-width: 1400px !important;
+    }
+}
+
+/* Extra large screens */
+@media screen and (min-width: 1800px) {
+    .container {
+        max-width: 1800px !important;
+    }
+
+    .is-8-desktop, .is-8-widescreen {
+        width: 75% !important;
+    }
+
+    .is-4-desktop, .is-4-widescreen {
+        width: 25% !important;
+    }
+}
