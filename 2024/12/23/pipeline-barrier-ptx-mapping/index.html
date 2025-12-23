@@ -94,7 +94,36 @@
 </tbody></table>
 <p>源码位置：<a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass/blob/main/include/cutlass/arch/barrier.h">barrier.h</a></p>
 <h3 id="1-5-双-Barrier-架构"><a href="#1-5-双-Barrier-架构" class="headerlink" title="1.5 双 Barrier 架构"></a>1.5 双 Barrier 架构</h3><p>Pipeline 使用双 Barrier 实现生产者-消费者同步：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line">graph LR</span><br><span class="line">    subgraph &quot;Pipeline Stage [i]&quot;</span><br><span class="line">        FB[FullBarrier&lt;br/&gt;ClusterTransactionBarrier]</span><br><span class="line">        EB[EmptyBarrier&lt;br/&gt;ClusterBarrier]</span><br><span class="line">        BUF[(SMEM Buffer)]</span><br><span class="line">    end</span><br><span class="line"></span><br><span class="line">    subgraph Producer</span><br><span class="line">        P1[producer_acquire]</span><br><span class="line">        P2[TMA Load]</span><br><span class="line">        P3[TMA Complete]</span><br><span class="line">    end</span><br><span class="line"></span><br><span class="line">    subgraph Consumer</span><br><span class="line">        C1[consumer_wait]</span><br><span class="line">        C2[MMA Compute]</span><br><span class="line">        C3[consumer_release]</span><br><span class="line">    end</span><br><span class="line"></span><br><span class="line">    P1 --&gt;|wait| EB</span><br><span class="line">    P1 --&gt;|arrive_and_expect_tx| FB</span><br><span class="line">    P2 --&gt;|write| BUF</span><br><span class="line">    P3 --&gt;|complete_tx| FB</span><br><span class="line"></span><br><span class="line">    C1 --&gt;|wait| FB</span><br><span class="line">    BUF --&gt;|read| C2</span><br><span class="line">    C3 --&gt;|arrive| EB</span><br><span class="line"></span><br><span class="line">    style FB fill:#e1f5fe</span><br><span class="line">    style EB fill:#fff3e0</span><br></pre></td></tr></table></figure>
+<pre class="mermaid">graph LR
+    subgraph "Pipeline Stage [i]"
+        FB[FullBarrier<br/>ClusterTransactionBarrier]
+        EB[EmptyBarrier<br/>ClusterBarrier]
+        BUF[(SMEM Buffer)]
+    end
+
+    subgraph Producer
+        P1[producer_acquire]
+        P2[TMA Load]
+        P3[TMA Complete]
+    end
+
+    subgraph Consumer
+        C1[consumer_wait]
+        C2[MMA Compute]
+        C3[consumer_release]
+    end
+
+    P1 -->|wait| EB
+    P1 -->|arrive_and_expect_tx| FB
+    P2 -->|write| BUF
+    P3 -->|complete_tx| FB
+
+    C1 -->|wait| FB
+    BUF -->|read| C2
+    C3 -->|arrive| EB
+
+    style FB fill:#e1f5fe
+    style EB fill:#fff3e0</pre>
 
 <table>
 <thead>
@@ -152,7 +181,25 @@
 <h3 id="2-3-自增操作符"><a href="#2-3-自增操作符" class="headerlink" title="2.3 自增操作符"></a>2.3 自增操作符</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cutlass/pipeline/sm90_pipeline.hpp:203-213</span></span><br><span class="line">CUTLASS_DEVICE</span><br><span class="line"><span class="type">void</span> <span class="keyword">operator</span>++() &#123;</span><br><span class="line">  <span class="function"><span class="keyword">if</span> <span class="title">constexpr</span> <span class="params">(Stages &gt; <span class="number">0</span>)</span> </span>&#123;</span><br><span class="line">    ++index_;</span><br><span class="line">    ++count_;</span><br><span class="line">    <span class="keyword">if</span> (index_ == Stages) &#123;</span><br><span class="line">      index_ = <span class="number">0</span>;        <span class="comment">// 回绕到开头</span></span><br><span class="line">      phase_ ^= <span class="number">1</span>;       <span class="comment">// 翻转 phase</span></span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <p><strong>关键点</strong>：当 <code>index_</code> 从 <code>Stages-1</code> 回绕到 <code>0</code> 时，<code>phase_</code> 翻转。这确保了 barrier 能区分不同轮次的操作。</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">stateDiagram-v2</span><br><span class="line">    direction LR</span><br><span class="line"></span><br><span class="line">    state &quot;Stage 0&quot; as S0</span><br><span class="line">    state &quot;Stage 1&quot; as S1</span><br><span class="line">    state &quot;Stage 2&quot; as S2</span><br><span class="line">    state &quot;Stage 3&quot; as S3</span><br><span class="line"></span><br><span class="line">    [*] --&gt; S0: index=0, phase=0</span><br><span class="line">    S0 --&gt; S1: ++index</span><br><span class="line">    S1 --&gt; S2: ++index</span><br><span class="line">    S2 --&gt; S3: ++index</span><br><span class="line">    S3 --&gt; S0: index回绕, phase翻转</span><br><span class="line"></span><br><span class="line">    note right of S3</span><br><span class="line">        当 index == Stages 时:</span><br><span class="line">        index = 0</span><br><span class="line">        phase ^= 1</span><br><span class="line">    end note</span><br></pre></td></tr></table></figure>
+<pre class="mermaid">stateDiagram-v2
+    direction LR
+
+    state "Stage 0" as S0
+    state "Stage 1" as S1
+    state "Stage 2" as S2
+    state "Stage 3" as S3
+
+    [*] --> S0: index=0, phase=0
+    S0 --> S1: ++index
+    S1 --> S2: ++index
+    S2 --> S3: ++index
+    S3 --> S0: index回绕, phase翻转
+
+    note right of S3
+        当 index == Stages 时:
+        index = 0
+        phase ^= 1
+    end note</pre>
 
 <h3 id="2-4-advance-方法"><a href="#2-4-advance-方法" class="headerlink" title="2.4 advance 方法"></a>2.4 advance 方法</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cutlass/pipeline/sm90_pipeline.hpp:228-244</span></span><br><span class="line"><span class="function">CUTLASS_DEVICE</span></span><br><span class="line"><span class="function">PipelineState&amp; <span class="title">advance</span><span class="params">(<span class="type">uint32_t</span> num_iterations)</span> </span>&#123;</span><br><span class="line">  <span class="function"><span class="keyword">if</span> <span class="title">constexpr</span> <span class="params">(Stages &gt; <span class="number">0</span>)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 判断是否需要翻转 phase</span></span><br><span class="line">    <span class="keyword">if</span> ((num_iterations &lt; Stages) &amp;&amp; (index_ + num_iterations) &gt;= Stages ) &#123;</span><br><span class="line">      phase_ ^= <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> ((num_iterations &gt;= Stages) &amp;&amp; (((index_ + num_iterations) / Stages) % <span class="number">2</span>) == <span class="number">1</span>) &#123;</span><br><span class="line">      phase_ ^= <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    index_ = (index_ + num_iterations) % Stages;</span><br><span class="line">    count_ += num_iterations;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> *<span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
@@ -202,7 +249,37 @@
 <li><strong>full_barrier_</strong>：Producer 填充数据后 signal，Consumer 等待</li>
 <li><strong>empty_barrier_</strong>：Consumer 使用完毕后 signal，Producer 等待</li>
 </ul>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line">graph TB</span><br><span class="line">    subgraph &quot;SharedStorage (SMEM)&quot;</span><br><span class="line">        subgraph &quot;Stage 0&quot;</span><br><span class="line">            FB0[full_barrier_0]</span><br><span class="line">            EB0[empty_barrier_0]</span><br><span class="line">        end</span><br><span class="line">        subgraph &quot;Stage 1&quot;</span><br><span class="line">            FB1[full_barrier_1]</span><br><span class="line">            EB1[empty_barrier_1]</span><br><span class="line">        end</span><br><span class="line">        subgraph &quot;Stage 2&quot;</span><br><span class="line">            FB2[full_barrier_2]</span><br><span class="line">            EB2[empty_barrier_2]</span><br><span class="line">        end</span><br><span class="line">        subgraph &quot;Stage N-1&quot;</span><br><span class="line">            FBN[full_barrier_N-1]</span><br><span class="line">            EBN[empty_barrier_N-1]</span><br><span class="line">        end</span><br><span class="line">    end</span><br><span class="line"></span><br><span class="line">    FULL[full_barrier_ptr_] --&gt; FB0</span><br><span class="line">    EMPTY[empty_barrier_ptr_] --&gt; EB0</span><br><span class="line"></span><br><span class="line">    style FB0 fill:#e3f2fd</span><br><span class="line">    style FB1 fill:#e3f2fd</span><br><span class="line">    style FB2 fill:#e3f2fd</span><br><span class="line">    style FBN fill:#e3f2fd</span><br><span class="line">    style EB0 fill:#fff8e1</span><br><span class="line">    style EB1 fill:#fff8e1</span><br><span class="line">    style EB2 fill:#fff8e1</span><br><span class="line">    style EBN fill:#fff8e1</span><br></pre></td></tr></table></figure>
+<pre class="mermaid">graph TB
+    subgraph "SharedStorage (SMEM)"
+        subgraph "Stage 0"
+            FB0[full_barrier_0]
+            EB0[empty_barrier_0]
+        end
+        subgraph "Stage 1"
+            FB1[full_barrier_1]
+            EB1[empty_barrier_1]
+        end
+        subgraph "Stage 2"
+            FB2[full_barrier_2]
+            EB2[empty_barrier_2]
+        end
+        subgraph "Stage N-1"
+            FBN[full_barrier_N-1]
+            EBN[empty_barrier_N-1]
+        end
+    end
+
+    FULL[full_barrier_ptr_] --> FB0
+    EMPTY[empty_barrier_ptr_] --> EB0
+
+    style FB0 fill:#e3f2fd
+    style FB1 fill:#e3f2fd
+    style FB2 fill:#e3f2fd
+    style FBN fill:#e3f2fd
+    style EB0 fill:#fff8e1
+    style EB1 fill:#fff8e1
+    style EB2 fill:#fff8e1
+    style EBN fill:#fff8e1</pre>
 
 <h3 id="3-3-ThreadCategory-枚举"><a href="#3-3-ThreadCategory-枚举" class="headerlink" title="3.3 ThreadCategory 枚举"></a>3.3 ThreadCategory 枚举</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 源码: include/cutlass/pipeline/sm90_pipeline.hpp:285-290</span></span><br><span class="line"><span class="keyword">enum class</span> <span class="title class_">ThreadCategory</span> &#123;</span><br><span class="line">  NonParticipant,    <span class="comment">// 不参与 Pipeline 操作</span></span><br><span class="line">  Producer,          <span class="comment">// 仅作为生产者</span></span><br><span class="line">  Consumer,          <span class="comment">// 仅作为消费者</span></span><br><span class="line">  ProducerConsumer   <span class="comment">// 同时是生产者和消费者</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
 
@@ -367,7 +444,34 @@
 
 <hr>
 <h2 id="9-完整工作流程示例"><a href="#9-完整工作流程示例" class="headerlink" title="9. 完整工作流程示例"></a>9. 完整工作流程示例</h2><p>下图展示了 Producer 和 Consumer 之间的交互时序：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line">sequenceDiagram</span><br><span class="line">    participant P as Producer</span><br><span class="line">    participant FB as FullBarrier</span><br><span class="line">    participant EB as EmptyBarrier</span><br><span class="line">    participant BUF as SMEM Buffer</span><br><span class="line">    participant C as Consumer</span><br><span class="line"></span><br><span class="line">    Note over P,C: Stage i 的一次完整迭代</span><br><span class="line"></span><br><span class="line">    rect rgb(232, 245, 233)</span><br><span class="line">        Note over P: Producer Phase</span><br><span class="line">        P-&gt;&gt;EB: wait(phase) - 等待空间</span><br><span class="line">        EB--&gt;&gt;P: 空间已释放</span><br><span class="line">        P-&gt;&gt;FB: arrive_and_expect_tx(bytes)</span><br><span class="line">        P-&gt;&gt;BUF: TMA Load (异步)</span><br><span class="line">        Note over FB: TMA完成后自动&lt;br/&gt;complete_tx</span><br><span class="line">    end</span><br><span class="line"></span><br><span class="line">    rect rgb(227, 242, 253)</span><br><span class="line">        Note over C: Consumer Phase</span><br><span class="line">        C-&gt;&gt;FB: wait(phase) - 等待数据</span><br><span class="line">        FB--&gt;&gt;C: 数据已就绪</span><br><span class="line">        BUF-&gt;&gt;C: 读取数据</span><br><span class="line">        Note over C: MMA 计算</span><br><span class="line">        C-&gt;&gt;EB: arrive() - 释放空间</span><br><span class="line">    end</span><br><span class="line"></span><br><span class="line">    Note over P,C: Phase 翻转后进入下一轮</span><br></pre></td></tr></table></figure>
+<pre class="mermaid">sequenceDiagram
+    participant P as Producer
+    participant FB as FullBarrier
+    participant EB as EmptyBarrier
+    participant BUF as SMEM Buffer
+    participant C as Consumer
+
+    Note over P,C: Stage i 的一次完整迭代
+
+    rect rgb(232, 245, 233)
+        Note over P: Producer Phase
+        P->>EB: wait(phase) - 等待空间
+        EB-->>P: 空间已释放
+        P->>FB: arrive_and_expect_tx(bytes)
+        P->>BUF: TMA Load (异步)
+        Note over FB: TMA完成后自动<br/>complete_tx
+    end
+
+    rect rgb(227, 242, 253)
+        Note over C: Consumer Phase
+        C->>FB: wait(phase) - 等待数据
+        FB-->>C: 数据已就绪
+        BUF->>C: 读取数据
+        Note over C: MMA 计算
+        C->>EB: arrive() - 释放空间
+    end
+
+    Note over P,C: Phase 翻转后进入下一轮</pre>
 
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Producer 线程（TMA 加载器）</span></span><br><span class="line">PipelineState producer_state = <span class="built_in">make_producer_start_state</span>&lt;Pipeline&gt;();</span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> (<span class="type">int</span> k = <span class="number">0</span>; k &lt; num_tiles; ++k) &#123;</span><br><span class="line">  <span class="comment">// 1. 获取缓冲区（等待空间 + 设置期望字节数）</span></span><br><span class="line">  pipeline.<span class="built_in">producer_acquire</span>(producer_state);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 2. 获取 barrier 指针供 TMA 使用</span></span><br><span class="line">  <span class="keyword">auto</span>* barrier = pipeline.<span class="built_in">producer_get_barrier</span>(producer_state);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 3. 发起 TMA 加载（硬件自动完成 barrier）</span></span><br><span class="line">  <span class="built_in">copy</span>(tma_load, gmem_tensor, smem_tensor, barrier);</span><br><span class="line"></span><br><span class="line">  ++producer_state;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 4. 退出前等待所有 Consumer 完成</span></span><br><span class="line">pipeline.<span class="built_in">producer_tail</span>(producer_state);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment">// Consumer 线程（MMA 计算）</span></span><br><span class="line">PipelineState consumer_state&#123;<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>&#125;;  <span class="comment">// phase = 0</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> (<span class="type">int</span> k = <span class="number">0</span>; k &lt; num_tiles; ++k) &#123;</span><br><span class="line">  <span class="comment">// 1. 尝试等待（非阻塞）</span></span><br><span class="line">  <span class="keyword">auto</span> token = pipeline.<span class="built_in">consumer_try_wait</span>(consumer_state);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 2. 可以做一些其他工作...</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// 3. 如果需要，阻塞等待</span></span><br><span class="line">  pipeline.<span class="built_in">consumer_wait</span>(consumer_state, token);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 4. 使用 SMEM 数据进行 MMA 计算</span></span><br><span class="line">  <span class="built_in">gemm</span>(smem_tensor, accumulators);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 5. 释放缓冲区给 Producer</span></span><br><span class="line">  pipeline.<span class="built_in">consumer_release</span>(consumer_state);</span><br><span class="line"></span><br><span class="line">  ++consumer_state;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
@@ -452,4 +556,19 @@
       }
     };</script><script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
             loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
-        });</script><script src="/js/theme-toggle.js"></script></body></html>
+        });</script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    }
+  });
+  document.addEventListener('pjax:complete', function() {
+    if (typeof mermaid !== 'undefined') {
+      mermaid.init(undefined, '.mermaid');
+    }
+  });
+</script>
+<script src="/js/theme-toggle.js"></script>
+</body></html>
