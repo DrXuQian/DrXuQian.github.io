@@ -1,0 +1,252 @@
+# NexT Theme Configuration
+# Docs: https://theme-next.js.org/docs/
+
+# ============================================================
+# Scheme Settings (选择样式)
+# ============================================================
+# Available: Muse | Mist | Pisces | Gemini
+scheme: Gemini
+
+# Dark Mode
+darkmode: true
+
+# ============================================================
+# Site Information
+# ============================================================
+favicon:
+  small: /images/favicon-16x16.png
+  medium: /images/favicon-32x32.png
+  apple_touch_icon: /images/apple-touch-icon.png
+
+# ============================================================
+# Menu Settings
+# ============================================================
+menu:
+  home: / || fa fa-home
+  archives: /archives/ || fa fa-archive
+  categories: /categories/ || fa fa-th
+  tags: /tags/ || fa fa-tags
+  about: /about/ || fa fa-user
+
+menu_settings:
+  icons: true
+  badges: true
+
+# ============================================================
+# Sidebar Settings
+# ============================================================
+sidebar:
+  position: left
+  width: 320
+  display: post
+  padding: 18
+  offset: 12
+
+# Avatar
+avatar:
+  url: /images/avatar.png
+  rounded: true
+  rotated: true
+
+# Social Links
+social:
+  GitHub: https://github.com/DrXuQian || fab fa-github
+  E-Mail: mailto:your@email.com || fa fa-envelope
+
+social_icons:
+  enable: true
+  icons_only: false
+  transition: true
+
+# Blog rolls (友链)
+links_settings:
+  icon: fa fa-globe
+  title: Links
+
+# Table of Contents
+toc:
+  enable: true
+  number: true
+  wrap: true
+  expand_all: true
+  max_depth: 4
+
+# ============================================================
+# Font Settings (字体美化)
+# ============================================================
+font:
+  enable: true
+  # Use system fonts for better performance
+  host: https://fonts.googleapis.com
+
+  # Global font (正文)
+  global:
+    external: true
+    family: "Noto Sans SC"
+    size: 1.0
+
+  # Title font (站点标题)
+  title:
+    external: true
+    family: "Noto Serif SC"
+    size:
+
+  # Headlines font (文章标题 h1-h6)
+  headings:
+    external: true
+    family: "Noto Serif SC"
+    size:
+
+  # Article font
+  posts:
+    external: true
+    family: "Noto Sans SC"
+
+  # Code font (代码)
+  codes:
+    external: true
+    family: "JetBrains Mono"
+    size: 0.9
+
+# ============================================================
+# Code Block Settings
+# ============================================================
+codeblock:
+  theme:
+    light: atom-one-light
+    dark: atom-one-dark
+  copy_button:
+    enable: true
+    style: mac
+
+# ============================================================
+# Post Settings
+# ============================================================
+# Post meta display
+post_meta:
+  item_text: true
+  created_at: true
+  updated_at:
+    enable: true
+    another_day: true
+  categories: true
+
+# Post wordcount
+# symbols_count_time:
+#   separated_meta: true
+#   item_text_total: true
+
+# Related posts
+related_posts:
+  enable: true
+  display_in_sidebar: false
+
+# Post edit
+post_edit:
+  enable: false
+
+# ============================================================
+# Miscellaneous
+# ============================================================
+# Back to top
+back2top:
+  enable: true
+  sidebar: false
+  scrollpercent: true
+
+# Reading progress bar
+reading_progress:
+  enable: true
+  position: top
+  color: "#3b82f6"
+  height: 3px
+
+# Bookmark
+bookmark:
+  enable: true
+  color: "#222"
+  save: auto
+
+# ============================================================
+# Math (LaTeX)
+# ============================================================
+math:
+  mathjax:
+    enable: true
+    per_page: true
+    tags: all
+
+# ============================================================
+# Search
+# ============================================================
+local_search:
+  enable: true
+  trigger: auto
+  top_n_per_article: 5
+  unescape: false
+  preload: true
+
+# ============================================================
+# Footer
+# ============================================================
+footer:
+  since: 2024
+  icon:
+    name: fa fa-heart
+    animated: true
+    color: "#f43f5e"
+  copyright:
+  powered: false
+  beian:
+    enable: false
+
+# ============================================================
+# Animation
+# ============================================================
+motion:
+  enable: true
+  async: false
+  transition:
+    menu_item: fadeInDown
+    post_block: fadeIn
+    post_header: fadeInDown
+    post_body: fadeInDown
+    coll_header: fadeInLeft
+    sidebar: fadeInUp
+
+# ============================================================
+# Comments (可选)
+# ============================================================
+# Uncomment to enable
+# giscus:
+#   enable: true
+#   repo: DrXuQian/DrXuQian.github.io
+#   repo_id:
+#   category: Announcements
+#   category_id:
+#   mapping: pathname
+#   strict: 0
+#   reactions_enabled: 1
+#   emit_metadata: 0
+#   input_position: top
+#   theme:
+#     light: light
+#     dark: dark
+
+# ============================================================
+# Statistics & Analytics
+# ============================================================
+# busuanzi_count:
+#   enable: true
+#   total_visitors: true
+#   total_visitors_icon: fa fa-user
+#   total_views: true
+#   total_views_icon: fa fa-eye
+#   post_views: true
+#   post_views_icon: far fa-eye
+
+# ============================================================
+# Custom Style
+# ============================================================
+custom_file_path:
+  style: source/_data/styles.styl

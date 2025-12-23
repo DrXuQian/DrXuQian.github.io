@@ -1,0 +1,163 @@
+##############################################################################
+# Content
+##############################################################################
+
+# Link to a page that gives an overview of all your projects.
+projects_url: https://github.com/DrXuQian
+
+# Page direction (ltr or rtl)
+direction: ltr
+
+# Navigation menu
+nav:
+  Home: /
+  About: /about/
+  Archives: /archives/
+  Categories: /categories/
+  Tags: /tags/
+
+# Social links
+social_links:
+  -
+    icon: github
+    link: https://github.com/DrXuQian
+  -
+    icon: mail
+    link: mailto:your@email.com
+
+# Tagcloud on index page
+tags_overview: true
+
+# Recent posts on index page
+posts_overview:
+  show_all_posts: false
+  post_count: 10
+  sort_updated: false
+
+# Archive view
+archive:
+  sort_updated: false
+
+# Article view
+post:
+  show_updated: true
+
+# Copyright years
+copyright:
+  start_year: 2024
+  end_year:
+
+# 404 page
+error_404:
+  enabled: true
+  title: "404 Page Not Found"
+  description: "The page you are looking for might have been removed, had its name changed, or is temporarily unavailable."
+
+
+##############################################################################
+# Look and Feel
+##############################################################################
+
+# Logo in the header
+logo:
+  enabled: true
+  width: 50
+  height: 50
+  url: /images/logo.png
+  gravatar: false
+  grayout: true
+
+# Favicons
+favicon:
+  desktop:
+    url: /images/favicon.ico
+    gravatar: false
+  android:
+    url: /images/favicon-192x192.png
+    gravatar: false
+  apple:
+    url: /images/apple-touch-icon.png
+    gravatar: false
+
+# Code highlight color scheme
+# Available: rainbow, night, atom-one-dark, atom-one-light, github, monokai
+highlight: atom-one-dark
+
+# Color scheme: 'dark', 'light', 'classic', 'white'
+colorscheme: dark
+
+# Page width in rem units
+page_width: 48
+
+
+##############################################################################
+# Miscellaneous
+##############################################################################
+
+# RSS feed
+rss: false
+
+# Open Graph
+open_graph:
+  fb_app_id:
+  fb_admins:
+  twitter_id:
+  google_plus:
+
+
+##############################################################################
+# Plugins
+##############################################################################
+
+# MathJax support
+mathjax:
+  enabled: true
+
+# Disqus comments (disabled)
+disqus:
+  enabled: false
+  shortname:
+
+# Utterances comments (disabled)
+utterances:
+  enabled: false
+  repo:
+  issue_term: pathname
+  label: Comment
+  theme: github-dark
+
+# Google Analytics (disabled)
+google_analytics:
+  enabled: false
+  id:
+
+# Baidu Analytics (disabled)
+baidu_analytics:
+  enabled: false
+  id:
+
+# Cloudflare Analytics (disabled)
+cloudflare_analytics:
+  enabled: false
+  id:
+
+# Umami Analytics (disabled)
+umami_analytics:
+  enabled: false
+  id:
+  host:
+  script_name: umami.js
+
+# Gravatar
+gravatar:
+  email:
+  hash:
+
+# CDN
+cdn:
+  enable: true
+  jquery: https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js
+  clipboard: https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js
+  font_awesome: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css
+  justified_gallery_css: https://cdnjs.cloudflare.com/ajax/libs/justifiedGallery/3.8.1/css/justifiedGallery.min.css
+  justified_gallery_js: https://cdnjs.cloudflare.com/ajax/libs/justifiedGallery/3.8.1/js/jquery.justifiedGallery.min.js

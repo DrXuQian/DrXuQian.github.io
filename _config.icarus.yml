@@ -1,0 +1,212 @@
+# Version of the configuration file
+version: 5.1.0
+
+# Icarus theme variant
+variant: default
+
+# Path or URL to the website's logo
+logo: /img/logo.svg
+
+# Page metadata configurations
+head:
+    favicon: /img/favicon.svg
+    manifest:
+        name: CUTLASS 学习笔记
+        short_name: CUTLASS
+        start_url: /
+        theme_color: '#0d1117'
+        background_color: '#0d1117'
+        display: standalone
+        icons:
+            -
+                src: ''
+                sizes: ''
+                type:
+    open_graph:
+        title:
+        type: blog
+        url:
+        image:
+        site_name:
+        author:
+        description:
+        twitter_card:
+        twitter_id:
+        twitter_site:
+        google_plus:
+        fb_admins:
+        fb_app_id:
+    structured_data:
+        title:
+        description:
+        url:
+        author:
+        publisher:
+        publisher_logo:
+        image:
+    meta:
+        - ''
+    # Custom CSS for wider layout
+    stylesheets:
+        - /css/custom.css
+    rss:
+
+# Page top navigation bar configurations
+navbar:
+    menu:
+        Home: /
+        Archives: /archives
+        Categories: /categories
+        Tags: /tags
+        About: /about
+    links:
+        GitHub:
+            icon: fab fa-github
+            url: https://github.com/DrXuQian
+
+# Page footer configurations
+footer:
+    copyright: © 2024 DrXuQian
+    links:
+        GitHub:
+            icon: fab fa-github
+            url: https://github.com/DrXuQian
+
+# Article related configurations
+article:
+    highlight:
+        # Cyberpunk style code theme
+        theme: atom-one-dark
+        clipboard: true
+        fold: unfolded
+    readtime: true
+    update_time: true
+    licenses:
+        Creative Commons:
+            icon: fab fa-creative-commons
+            url: https://creativecommons.org/
+        Attribution:
+            icon: fab fa-creative-commons-by
+            url: https://creativecommons.org/licenses/by/4.0/
+
+# Search plugin configurations
+search:
+    type: insight
+    index_pages: true
+
+# Comment plugin - disabled
+comment:
+
+# Donate plugin - disabled
+donates:
+
+# Share plugin - disabled
+share:
+
+# Sidebar configurations
+sidebar:
+    left:
+        sticky: true
+    right:
+        sticky: true
+
+# Sidebar widget configurations
+widgets:
+    # Profile widget
+    -
+        position: left
+        type: profile
+        author: DrXuQian
+        author_title: CUDA/GPU Enthusiast
+        location: China
+        avatar: /img/avatar.jpg
+        avatar_rounded: true
+        gravatar:
+        follow_link: https://github.com/DrXuQian
+        social_links:
+            GitHub:
+                icon: fab fa-github
+                url: https://github.com/DrXuQian
+
+    # Table of contents
+    -
+        position: left
+        type: toc
+        index: true
+        collapsed: false
+        depth: 4
+
+    # Categories - only show on index page
+    -
+        position: right
+        type: categories
+        page:
+            index: true
+            post: false
+
+    # Recent posts - only show on index page
+    -
+        position: right
+        type: recent_posts
+        page:
+            index: true
+            post: false
+
+    # Archives - only show on index page
+    -
+        position: right
+        type: archives
+        page:
+            index: true
+            post: false
+
+    # Tags - only show on index page
+    -
+        position: right
+        type: tags
+        order_by: -length
+        amount: 20
+        show_count: true
+        page:
+            index: true
+            post: false
+
+# Plugin configurations
+plugins:
+    animejs: true
+    back_to_top: true
+    baidu_analytics:
+        tracking_id:
+    bing_webmaster:
+        tracking_id:
+    busuanzi: true
+    cnzz:
+        id:
+        web_id:
+    cookie_consent:
+        type: info
+        theme: edgeless
+        static: false
+        position: bottom-left
+        policyLink: https://www.cookiesandyou.com/
+    gallery: true
+    google_analytics:
+        tracking_id:
+    hotjar:
+        site_id:
+    katex: false
+    mathjax: true
+    outdated_browser: false
+    pjax: true
+    progressbar: true
+    statcounter:
+        project:
+        security:
+    twitter_conversion_tracking:
+        pixel_id:
+
+# CDN provider settings
+providers:
+    cdn: jsdelivr
+    fontcdn: google
+    iconcdn: fontawesome
