@@ -1,68 +1,82 @@
 /* Custom styles for wider page width */
 
 /* Increase container max-width */
-.container {
-    max-width: 1400px !important;
+html body .container {
+    max-width: 1600px !important;
 }
 
-/* Wider content area - main column */
-.is-8-desktop, .is-8-widescreen {
+/* Main content column - wider */
+html body .column.is-8-tablet,
+html body .column.is-8-desktop,
+html body .column.is-8-widescreen,
+html body .is-8-desktop,
+html body .is-8-widescreen {
+    flex: none !important;
     width: 70% !important;
-    flex: none !important;
 }
 
-/* Adjust sidebar width */
-.is-4-desktop, .is-4-widescreen {
+/* Sidebar column - narrower */
+html body .column.is-4-tablet,
+html body .column.is-4-desktop,
+html body .column.is-4-widescreen,
+html body .is-4-desktop,
+html body .is-4-widescreen {
+    flex: none !important;
     width: 30% !important;
+}
+
+/* Two sidebar layout - left sidebar smaller */
+html body .column.is-8-tablet.is-8-desktop.is-6-widescreen {
+    width: 55% !important;
     flex: none !important;
 }
 
-/* For single column layout, use full width */
-.is-12 {
-    max-width: 1200px;
-    margin: 0 auto;
+html body .column.is-4-tablet.is-4-desktop.is-3-widescreen {
+    width: 22.5% !important;
+    flex: none !important;
 }
 
-/* Wider card content */
-.card-content {
-    padding: 1.5rem 2rem;
+/* Card content padding */
+html body .card-content {
+    padding: 1.25rem 1.5rem;
 }
 
-/* Code block full width */
-.content pre {
+/* Code block */
+html body .content pre {
     max-width: 100%;
     overflow-x: auto;
 }
 
-/* Article content wider */
-.article-content {
+/* Article content */
+html body .article-content {
     max-width: 100%;
 }
 
 /* Large screens */
 @media screen and (min-width: 1408px) {
-    .container {
-        max-width: 1600px !important;
+    html body .container {
+        max-width: 1700px !important;
     }
 }
 
-@media screen and (min-width: 1216px) {
-    .container {
-        max-width: 1400px !important;
+@media screen and (min-width: 1600px) {
+    html body .container {
+        max-width: 1900px !important;
     }
 }
 
-/* Extra large screens */
 @media screen and (min-width: 1800px) {
-    .container {
-        max-width: 1800px !important;
+    html body .container {
+        max-width: 2100px !important;
     }
 
-    .is-8-desktop, .is-8-widescreen {
-        width: 75% !important;
+    html body .column.is-8-desktop,
+    html body .column.is-8-widescreen {
+        width: 72% !important;
     }
 
-    .is-4-desktop, .is-4-widescreen {
-        width: 25% !important;
+    html body .column.is-4-desktop,
+    html body .column.is-4-widescreen {
+        width: 28% !important;
     }
 }
