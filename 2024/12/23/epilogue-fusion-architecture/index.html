@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222" media="(prefers-color-scheme: dark)"><meta name="generator" content="Hexo 8.1.1">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css" integrity="sha256-VHqXKFhhMxcpubYf9xiWdCiojEbY9NexQ4jh8AxbvcM=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"drxuqian.github.io","root":"/","images":"/images","scheme":"Gemini","darkmode":true,"version":"8.26.0","exturl":false,"sidebar":{"position":"left","width_expanded":320,"width_dual_column":240,"display":"post","padding":18,"offset":12},"hljswrap":true,"codeblock":{"theme":{"light":"default","dark":"tokyo-night-dark"},"prism":{"light":"prism","dark":"prism-dark"},"copy_button":{"enable":true,"style":"mac"},"fold":{"enable":false,"height":500},"language":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"duration":200,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js" defer></script>
+
+    <meta name="description" content="本文档详细解释 SM90 Epilogue 和 Fusion 系统的完整架构。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="CUTLASS Epilogue Fusion 架构详解">
+<meta property="og:url" content="https://drxuqian.github.io/2024/12/23/epilogue-fusion-architecture/index.html">
+<meta property="og:site_name" content="CUTLASS 学习笔记">
+<meta property="og:description" content="本文档详细解释 SM90 Epilogue 和 Fusion 系统的完整架构。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-12-22T16:00:00.000Z">
+<meta property="article:modified_time" content="2025-12-23T14:20:31.059Z">
+<meta property="article:author" content="DrXuQian">
+<meta property="article:tag" content="CUTLASS">
+<meta property="article:tag" content="EVT">
+<meta property="article:tag" content="Epilogue">
+<meta property="article:tag" content="Fusion">
+<meta name="twitter:card" content="summary">
+
+
+<link rel="canonical" href="https://drxuqian.github.io/2024/12/23/epilogue-fusion-architecture/">
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://drxuqian.github.io/2024/12/23/epilogue-fusion-architecture/","path":"2024/12/23/epilogue-fusion-architecture/","title":"CUTLASS Epilogue Fusion 架构详解"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>CUTLASS Epilogue Fusion 架构详解 | CUTLASS 学习笔记</title>
+  
+
+
+
+
+
+
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous" defer></script>
+<script src="/js/utils.js" defer></script><script src="/js/motion.js" defer></script><script src="/js/sidebar.js" defer></script><script src="/js/next-boot.js" defer></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hexo-generator-searchdb/1.5.0/search.js" integrity="sha256-xFC6PJ82SL9b3WkGjFavNiA9gm5z6UBxWPiu4CYjptg=" crossorigin="anonymous" defer></script>
+<script src="/js/third-party/search/local-search.js" defer></script>
+
+
+
+
+
+
+
+  
+
+
+
+
+  
+
+  <script class="next-config" data-name="enableMath" type="application/json">false</script><script class="next-config" data-name="mathjax" type="application/json">{"enable":true,"tags":"none","per_page":true,"js":{"url":"https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js","integrity":"sha256-MASABpB4tYktI2Oitl4t+78w/lyA+D7b/s9GEP0JOGI="}}</script>
+<script src="/js/third-party/math/mathjax.js" defer></script>
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">CUTLASS 学习笔记</p>
+      <i class="logo-line"></i>
+    </a>
+      <p class="site-subtitle" itemprop="description">深入理解 NVIDIA CUTLASS 和 CuTE</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  <ul class="main-menu menu"><li class="menu-item menu-item-home"><a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a></li><li class="menu-item menu-item-archives"><a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a></li><li class="menu-item menu-item-categories"><a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a></li><li class="menu-item menu-item-tags"><a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a></li><li class="menu-item menu-item-about"><a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a></li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+      <div class="search-header">
+        <span class="search-icon">
+          <i class="fa fa-search"></i>
+        </span>
+        <div class="search-input-container">
+          <input autocomplete="off" autocapitalize="off" maxlength="80"
+                placeholder="搜索..." spellcheck="false"
+                type="search" class="search-input">
+        </div>
+        <span class="popup-btn-close" role="button">
+          <i class="fa fa-times-circle"></i>
+        </span>
+      </div>
+      <div class="search-result-container">
+        <div class="search-result-icon">
+          <i class="fa fa-spinner fa-pulse fa-5x"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E6%80%BB%E4%BD%93%E6%9E%B6%E6%9E%84%E5%9B%BE"><span class="nav-number">1.</span> <span class="nav-text">1. 总体架构图</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E5%85%B7%E4%BD%93%E7%A4%BA%E4%BE%8B%EF%BC%9AGEMM-Bias-ReLU"><span class="nav-number">2.</span> <span class="nav-text">2. 具体示例：GEMM + Bias + ReLU</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-%E7%94%A8%E6%88%B7%E4%BB%A3%E7%A0%81%E7%A4%BA%E4%BE%8B"><span class="nav-number">2.1.</span> <span class="nav-text">2.1 用户代码示例</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-EVT-%E5%B1%95%E5%BC%80%E8%BF%87%E7%A8%8B"><span class="nav-number">2.2.</span> <span class="nav-text">2.2 EVT 展开过程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-%E8%BF%90%E8%A1%8C%E6%97%B6%E6%89%A7%E8%A1%8C%E6%B5%81%E7%A8%8B"><span class="nav-number">2.3.</span> <span class="nav-text">2.3 运行时执行流程</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E6%95%B0%E6%8D%AE%E6%B5%81%E8%AF%A6%E8%A7%A3"><span class="nav-number">3.</span> <span class="nav-text">3. 数据流详解</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-SMEM-%E5%B8%83%E5%B1%80%E7%A4%BA%E4%BE%8B"><span class="nav-number">3.1.</span> <span class="nav-text">3.1 SMEM 布局示例</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-%E5%AF%84%E5%AD%98%E5%99%A8%E4%BD%BF%E7%94%A8%E7%A4%BA%E4%BE%8B"><span class="nav-number">3.2.</span> <span class="nav-text">3.2 寄存器使用示例</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-Pipeline-%E7%8A%B6%E6%80%81%E6%9C%BA"><span class="nav-number">4.</span> <span class="nav-text">4. Pipeline 状态机</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#4-1-PipelineState-%E7%BB%93%E6%9E%84"><span class="nav-number">4.1.</span> <span class="nav-text">4.1 PipelineState 结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-2-4-Stage-Pipeline-%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2%E7%A4%BA%E4%BE%8B"><span class="nav-number">4.2.</span> <span class="nav-text">4.2 4-Stage Pipeline 状态转换示例</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-EVT-%E8%8A%82%E7%82%B9%E8%AF%A6%E8%A7%A3"><span class="nav-number">5.</span> <span class="nav-text">5. EVT 节点详解</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#5-1-Leaf-%E8%8A%82%E7%82%B9"><span class="nav-number">5.1.</span> <span class="nav-text">5.1 Leaf 节点</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-2-Internal-%E8%8A%82%E7%82%B9"><span class="nav-number">5.2.</span> <span class="nav-text">5.2 Internal 节点</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-3-%E5%B8%B8%E7%94%A8%E8%AE%A1%E7%AE%97%E5%87%BD%E6%95%B0"><span class="nav-number">5.3.</span> <span class="nav-text">5.3 常用计算函数</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E5%9B%9E%E8%B0%83%E5%87%BD%E6%95%B0%E8%B0%83%E7%94%A8%E6%97%B6%E5%BA%8F"><span class="nav-number">6.</span> <span class="nav-text">6. 回调函数调用时序</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98%E5%8F%82%E6%95%B0"><span class="nav-number">7.</span> <span class="nav-text">7. 性能调优参数</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E7%9B%B8%E5%85%B3%E6%BA%90%E6%96%87%E4%BB%B6"><span class="nav-number">8.</span> <span class="nav-text">8. 相关源文件</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="DrXuQian"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">DrXuQian</p>
+  <div class="site-description" itemprop="description">CUTLASS/CuTE 内部实现详解</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">2</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+          <a href="/categories/">
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+          <a href="/tags/">
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author animated">
+      <span class="links-of-author-item">
+        <a href="https://github.com/DrXuQian" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;DrXuQian" rel="noopener me" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://drxuqian.github.io/2024/12/23/epilogue-fusion-architecture/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="DrXuQian">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="CUTLASS 学习笔记">
+      <meta itemprop="description" content="CUTLASS/CuTE 内部实现详解">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="CUTLASS Epilogue Fusion 架构详解 | CUTLASS 学习笔记">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          CUTLASS Epilogue Fusion 架构详解
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2024-12-23 00:00:00" itemprop="dateCreated datePublished" datetime="2024-12-23T00:00:00+08:00">2024-12-23</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2025-12-23 22:20:31" itemprop="dateModified" datetime="2025-12-23T22:20:31+08:00">2025-12-23</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-folder"></i>
+      </span>
+      <span class="post-meta-item-text">分类于</span>
+        <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+          <a href="/categories/CUTLASS/" itemprop="url" rel="index"><span itemprop="name">CUTLASS</span></a>
+        </span>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><p>本文档详细解释 SM90 Epilogue 和 Fusion 系统的完整架构。</p>
+<span id="more"></span>
+
+<p>本文档详细解释 SM90 Epilogue 和 Fusion 系统的完整架构。</p>
+<h2 id="1-总体架构图"><a href="#1-总体架构图" class="headerlink" title="1. 总体架构图"></a>1. 总体架构图</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br></pre></td><td class="code"><pre><span class="line">┌─────────────────────────────────────────────────────────────────────────────────────────────────┐</span><br><span class="line">│                              CUTLASS SM90 Epilogue + Fusion 完整架构                             │</span><br><span class="line">├─────────────────────────────────────────────────────────────────────────────────────────────────┤</span><br><span class="line">│                                                                                                  │</span><br><span class="line">│  ┌──────────────────────────────────────────────────────────────────────────────────────────┐   │</span><br><span class="line">│  │                                    用户代码                                               │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │  // 选择融合操作类型                                                                      │   │</span><br><span class="line">│  │  using FusionOp = cutlass::epilogue::fusion::LinCombPerRowBiasEltAct&lt;                    │   │</span><br><span class="line">│  │      cutlass::epilogue::thread::ReLU,  // 激活函数                                       │   │</span><br><span class="line">│  │      half_t,                            // 输出类型                                       │   │</span><br><span class="line">│  │      float,                             // 计算类型                                       │   │</span><br><span class="line">│  │      half_t                             // Bias 类型                                      │   │</span><br><span class="line">│  │  &gt;;                                                                                       │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │  // 配置 Epilogue                                                                        │   │</span><br><span class="line">│  │  using CollectiveEpilogue = cutlass::epilogue::collective::CollectiveEpilogue&lt;           │   │</span><br><span class="line">│  │      Sm90TmaWarpSpecialized&lt;4, 4, 2, false, false&gt;,  // DispatchPolicy                   │   │</span><br><span class="line">│  │      TileShape, EpilogueTile,                                                            │   │</span><br><span class="line">│  │      ElementC, StrideC, ElementD, StrideD,                                               │   │</span><br><span class="line">│  │      FusionCallbacks&lt;..., FusionOp, ...&gt;,            // 融合回调                         │   │</span><br><span class="line">│  │      ...                                                                                 │   │</span><br><span class="line">│  │  &gt;;                                                                                       │   │</span><br><span class="line">│  └──────────────────────────────────────────────────────────────────────────────────────────┘   │</span><br><span class="line">│                                              │                                                   │</span><br><span class="line">│                                              ▼                                                   │</span><br><span class="line">│  ┌──────────────────────────────────────────────────────────────────────────────────────────┐   │</span><br><span class="line">│  │                              Template Dispatch Layer                                      │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │  fusion/operations.hpp          fusion/callbacks.hpp       sm90_callbacks_*.hpp          │   │</span><br><span class="line">│  │  ┌─────────────────┐           ┌─────────────────┐       ┌─────────────────────┐        │   │</span><br><span class="line">│  │  │ FusionOperation │           │ FusionCallbacks │       │ FusionCallbacks     │        │   │</span><br><span class="line">│  │  │ (元数据定义)     │ ────────► │ (分发接口)       │ ─────►│ 特化 (EVT 实现)     │        │   │</span><br><span class="line">│  │  │                 │           │                 │       │                     │        │   │</span><br><span class="line">│  │  │ • LinearComb    │           │ 匹配 Policy +   │       │ 继承自 Sm90EVT&lt;...&gt; │        │   │</span><br><span class="line">│  │  │ • LinCombBias   │           │ Operation       │       │                     │        │   │</span><br><span class="line">│  │  │ • LinCombEltAct │           │                 │       │                     │        │   │</span><br><span class="line">│  │  └─────────────────┘           └─────────────────┘       └─────────────────────┘        │   │</span><br><span class="line">│  └──────────────────────────────────────────────────────────────────────────────────────────┘   │</span><br><span class="line">│                                              │                                                   │</span><br><span class="line">│                                              ▼                                                   │</span><br><span class="line">│  ┌──────────────────────────────────────────────────────────────────────────────────────────┐   │</span><br><span class="line">│  │                              EVT (Expression Visitor Tree)                                │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │  示例: LinCombPerRowBiasEltAct = ReLU(α * acc + β * C + bias)                           │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │                          Sm90Compute&lt;ReLU&gt;                    ← 激活函数                 │   │</span><br><span class="line">│  │                                │                                                         │   │</span><br><span class="line">│  │                    Sm90Compute&lt;plus&gt;                          ← 加 bias                  │   │</span><br><span class="line">│  │                   /                    \                                                 │   │</span><br><span class="line">│  │       Sm90RowBroadcast            Sm90Compute&lt;multiply_add&gt;   ← β*C + α*acc             │   │</span><br><span class="line">│  │           (bias)                 /         |         \                                   │   │</span><br><span class="line">│  │                       Sm90Scalar    Sm90SrcFetch   Sm90EVT&lt;multiplies&gt;                  │   │</span><br><span class="line">│  │                          (β)           (C)        /              \                       │   │</span><br><span class="line">│  │                                            Sm90Scalar      Sm90AccFetch                  │   │</span><br><span class="line">│  │                                               (α)             (acc)                      │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │  EVT 节点类型:                                                                           │   │</span><br><span class="line">│  │  • Leaf nodes: Sm90AccFetch, Sm90SrcFetch, Sm90ScalarBroadcast, Sm90RowBroadcast        │   │</span><br><span class="line">│  │  • Internal nodes: Sm90Compute&lt;Op&gt; (Op = plus, multiplies, ReLU, GELU, etc.)            │   │</span><br><span class="line">│  │  • Output nodes: Sm90AuxStore (可选的辅助输出)                                           │   │</span><br><span class="line">│  └──────────────────────────────────────────────────────────────────────────────────────────┘   │</span><br><span class="line">│                                              │                                                   │</span><br><span class="line">│                                              ▼                                                   │</span><br><span class="line">│  ┌──────────────────────────────────────────────────────────────────────────────────────────┐   │</span><br><span class="line">│  │                          CollectiveEpilogue 执行引擎                                      │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │    ┌─────────────────────────┐              ┌─────────────────────────┐                 │   │</span><br><span class="line">│  │    │   Producer Load Warp    │              │  Consumer Store Warps   │                 │   │</span><br><span class="line">│  │    │        (pld)            │              │        (cst)            │                 │   │</span><br><span class="line">│  │    │                         │              │                         │                 │   │</span><br><span class="line">│  │    │  • TMA load C           │    SMEM      │  • SMEM → Register      │                 │   │</span><br><span class="line">│  │    │  • TMA load bias        │ ──────────►  │  • EVT.visit() 计算     │                 │   │</span><br><span class="line">│  │    │  • TMA load scale       │   Pipeline   │  • Register → SMEM      │                 │   │</span><br><span class="line">│  │    │                         │              │  • TMA store D          │                 │   │</span><br><span class="line">│  │    └─────────────────────────┘              └─────────────────────────┘                 │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │    Pipeline 同步 (mbarrier):                                                             │   │</span><br><span class="line">│  │    • Full Barrier: Producer → Consumer (数据就绪)                                        │   │</span><br><span class="line">│  │    • Empty Barrier: Consumer → Producer (空间释放)                                       │   │</span><br><span class="line">│  └──────────────────────────────────────────────────────────────────────────────────────────┘   │</span><br><span class="line">│                                              │                                                   │</span><br><span class="line">│                                              ▼                                                   │</span><br><span class="line">│  ┌──────────────────────────────────────────────────────────────────────────────────────────┐   │</span><br><span class="line">│  │                                 硬件层 (SM90/Hopper)                                      │   │</span><br><span class="line">│  │                                                                                          │   │</span><br><span class="line">│  │    GMEM ◄────── TMA ──────► SMEM ◄────── Register File                                  │   │</span><br><span class="line">│  │                              ▲                                                           │   │</span><br><span class="line">│  │                              │                                                           │   │</span><br><span class="line">│  │                         mbarrier (64-bit)                                                │   │</span><br><span class="line">│  │                    ┌──────────────────────┐                                              │   │</span><br><span class="line">│  │                    │ Phase │ PendingTX │ Arrival │                                       │   │</span><br><span class="line">│  │                    │ 1-bit │  ~20-bit  │ ~20-bit │                                       │   │</span><br><span class="line">│  │                    └──────────────────────┘                                              │   │</span><br><span class="line">│  └──────────────────────────────────────────────────────────────────────────────────────────┘   │</span><br><span class="line">└─────────────────────────────────────────────────────────────────────────────────────────────────┘</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-具体示例：GEMM-Bias-ReLU"><a href="#2-具体示例：GEMM-Bias-ReLU" class="headerlink" title="2. 具体示例：GEMM + Bias + ReLU"></a>2. 具体示例：GEMM + Bias + ReLU</h2><h3 id="2-1-用户代码示例"><a href="#2-1-用户代码示例" class="headerlink" title="2.1 用户代码示例"></a>2.1 用户代码示例</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;cutlass/cutlass.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;cutlass/gemm/device/gemm_universal.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;cutlass/epilogue/collective/collective_builder.hpp&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 定义 GEMM 问题</span></span><br><span class="line"><span class="comment">// D = ReLU(alpha * (A @ B) + beta * C + bias)</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">using</span> ElementA = cutlass::<span class="type">half_t</span>;</span><br><span class="line"><span class="keyword">using</span> ElementB = cutlass::<span class="type">half_t</span>;</span><br><span class="line"><span class="keyword">using</span> ElementC = cutlass::<span class="type">half_t</span>;</span><br><span class="line"><span class="keyword">using</span> ElementD = cutlass::<span class="type">half_t</span>;</span><br><span class="line"><span class="keyword">using</span> ElementBias = cutlass::<span class="type">half_t</span>;</span><br><span class="line"><span class="keyword">using</span> ElementCompute = <span class="type">float</span>;  <span class="comment">// 累加和计算使用 FP32</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Step 1: 选择融合操作</span></span><br><span class="line"><span class="keyword">using</span> EpilogueOp = cutlass::epilogue::fusion::LinCombPerRowBiasEltAct&lt;</span><br><span class="line">    cutlass::epilogue::thread::ReLU,  <span class="comment">// 激活函数</span></span><br><span class="line">    ElementD,                          <span class="comment">// 输出类型</span></span><br><span class="line">    ElementCompute,                    <span class="comment">// 计算类型</span></span><br><span class="line">    ElementBias,                       <span class="comment">// Bias 类型</span></span><br><span class="line">    ElementC,                          <span class="comment">// Source (C) 类型</span></span><br><span class="line">    ElementCompute                     <span class="comment">// Scalar (alpha/beta) 类型</span></span><br><span class="line">&gt;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Step 2: 使用 CollectiveBuilder 构建 Epilogue</span></span><br><span class="line"><span class="keyword">using</span> CollectiveEpilogue = <span class="keyword">typename</span> cutlass::epilogue::collective::CollectiveBuilder&lt;</span><br><span class="line">    cutlass::arch::Sm90,</span><br><span class="line">    cutlass::arch::OpClassTensorOp,</span><br><span class="line">    TileShape,           <span class="comment">// e.g., Shape&lt;_128, _128, _64&gt;</span></span><br><span class="line">    ClusterShape,        <span class="comment">// e.g., Shape&lt;_1, _1, _1&gt;</span></span><br><span class="line">    EpilogueTileType,</span><br><span class="line">    ElementCompute,      <span class="comment">// Accumulator type</span></span><br><span class="line">    ElementCompute,      <span class="comment">// Compute type</span></span><br><span class="line">    ElementC, LayoutC,</span><br><span class="line">    <span class="number">128</span> / cutlass::sizeof_bits&lt;ElementC&gt;::value,  <span class="comment">// Alignment</span></span><br><span class="line">    ElementD, LayoutD,</span><br><span class="line">    <span class="number">128</span> / cutlass::sizeof_bits&lt;ElementD&gt;::value,</span><br><span class="line">    EpilogueOp           <span class="comment">// 融合操作</span></span><br><span class="line">&gt;::CollectiveOp;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Step 3: 配置运行时参数</span></span><br><span class="line"><span class="keyword">typename</span> CollectiveEpilogue::Arguments epilogue_args &#123;</span><br><span class="line">    &#123;</span><br><span class="line">        alpha,                    <span class="comment">// ElementCompute alpha</span></span><br><span class="line">        beta,                     <span class="comment">// ElementCompute beta</span></span><br><span class="line">        <span class="literal">nullptr</span>,                  <span class="comment">// alpha_ptr (optional)</span></span><br><span class="line">        <span class="literal">nullptr</span>,                  <span class="comment">// beta_ptr (optional)</span></span><br><span class="line">        ptr_bias,                 <span class="comment">// ElementBias const* ptr_bias</span></span><br><span class="line">        &#123;_0&#123;&#125;, _1&#123;&#125;, <span class="number">0</span>&#125;          <span class="comment">// Stride for bias (per-row)</span></span><br><span class="line">    &#125;,</span><br><span class="line">    ptr_C,                        <span class="comment">// ElementC const* ptr_C</span></span><br><span class="line">    &#123;ldC, _1&#123;&#125;, <span class="number">0</span>&#125;,              <span class="comment">// StrideC</span></span><br><span class="line">    ptr_D,                        <span class="comment">// ElementD* ptr_D</span></span><br><span class="line">    &#123;ldD, _1&#123;&#125;, <span class="number">0</span>&#125;               <span class="comment">// StrideD</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-EVT-展开过程"><a href="#2-2-EVT-展开过程" class="headerlink" title="2.2 EVT 展开过程"></a>2.2 EVT 展开过程</h3><p>上述 <code>LinCombPerRowBiasEltAct</code> 在编译时展开为以下 EVT 结构：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 文件: sm90_callbacks_tma_warpspecialized.hpp</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// D = ReLU(alpha * acc + beta * C + bias)</span></span><br><span class="line"><span class="keyword">using</span> Sm90LinCombPerRowBiasEltAct =</span><br><span class="line">  Sm90EVT&lt;Sm90Compute&lt;ReLU, ElementD, ElementCompute, RoundStyle&gt;,  <span class="comment">// 根节点: ReLU</span></span><br><span class="line">    Sm90EVT&lt;Sm90Compute&lt;plus, ElementCompute, ElementCompute&gt;,       <span class="comment">// 加 bias</span></span><br><span class="line">      Sm90RowBroadcast&lt;ElementBias, Stride&lt;_1, _0, <span class="type">int64_t</span>&gt;&gt;,        <span class="comment">// bias (per-row)</span></span><br><span class="line">      Sm90EVT&lt;Sm90Compute&lt;multiply_add, ElementCompute, ElementCompute&gt;,  <span class="comment">// β*C + α*acc</span></span><br><span class="line">        Sm90ScalarBroadcast&lt;ElementScalar&gt;,                          <span class="comment">// β</span></span><br><span class="line">        Sm90SrcFetch&lt;ElementC&gt;,                                      <span class="comment">// C</span></span><br><span class="line">        Sm90EVT&lt;Sm90Compute&lt;multiplies, ElementCompute, ElementCompute&gt;,  <span class="comment">// α*acc</span></span><br><span class="line">          Sm90ScalarBroadcast&lt;ElementScalar&gt;,                        <span class="comment">// α</span></span><br><span class="line">          Sm90AccFetch                                               <span class="comment">// acc (累加器)</span></span><br><span class="line">        &gt;</span><br><span class="line">      &gt;</span><br><span class="line">    &gt;</span><br><span class="line">  &gt;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-3-运行时执行流程"><a href="#2-3-运行时执行流程" class="headerlink" title="2.3 运行时执行流程"></a>2.3 运行时执行流程</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br></pre></td><td class="code"><pre><span class="line">时间线</span><br><span class="line">──────────────────────────────────────────────────────────────────────────────►</span><br><span class="line"></span><br><span class="line">Producer Load Warp (pld)                    Consumer Store Warps (cst)</span><br><span class="line">        │                                            │</span><br><span class="line">        ▼                                            │</span><br><span class="line">┌───────────────────────┐                            │</span><br><span class="line">│ producer_acquire(s0)  │                            │</span><br><span class="line">│ • wait(empty[0])      │                            │</span><br><span class="line">│ • expect_tx(full[0])  │                            │</span><br><span class="line">└───────────────────────┘                            │</span><br><span class="line">        │                                            │</span><br><span class="line">        ▼                                            │</span><br><span class="line">┌───────────────────────┐                            │</span><br><span class="line">│ pld_callbacks.step()  │                            │</span><br><span class="line">│ • TMA load bias[0]    │                            │</span><br><span class="line">│ • TMA load C[0]       │                            │</span><br><span class="line">└───────────────────────┘                            │</span><br><span class="line">        │                                            │</span><br><span class="line">        │  (TMA 完成, 硬件自动 complete_tx)           │</span><br><span class="line">        │  full_barrier[0] phase flip ──────────────►│</span><br><span class="line">        │                                            ▼</span><br><span class="line">        │                              ┌───────────────────────┐</span><br><span class="line">        │                              │ consumer_wait(s0)     │</span><br><span class="line">        │                              │ • wait(full[0])       │</span><br><span class="line">        │                              └───────────────────────┘</span><br><span class="line">        │                                            │</span><br><span class="line">        │                                            ▼</span><br><span class="line">        │                              ┌───────────────────────┐</span><br><span class="line">        │                              │ S2R: SMEM → Register  │</span><br><span class="line">        │                              │ • copy C to rC        │</span><br><span class="line">        │                              └───────────────────────┘</span><br><span class="line">        │                                            │</span><br><span class="line">        │                                            ▼</span><br><span class="line">        │                              ┌───────────────────────┐</span><br><span class="line">        │                              │ cst_callbacks.previsit│</span><br><span class="line">        │                              │ • copy bias to rBias  │</span><br><span class="line">        │                              └───────────────────────┘</span><br><span class="line">        │                                            │</span><br><span class="line">        │                                            ▼</span><br><span class="line">        │                              ┌───────────────────────────────────┐</span><br><span class="line">        │                              │ cst_callbacks.visit()             │</span><br><span class="line">        │                              │                                   │</span><br><span class="line">        │                              │ for (v = 0; v &lt; FragmentSize; v++)│</span><br><span class="line">        │                              │   // EVT 后序遍历执行:            │</span><br><span class="line">        │                              │   acc_v = rAcc[v]                 │</span><br><span class="line">        │                              │   t1 = α * acc_v                  │</span><br><span class="line">        │                              │   t2 = β * rC[v] + t1             │</span><br><span class="line">        │                              │   t3 = t2 + rBias[row]            │</span><br><span class="line">        │                              │   rD[v] = ReLU(t3)                │</span><br><span class="line">        │                              └───────────────────────────────────┘</span><br><span class="line">        │                                            │</span><br><span class="line">        │                                            ▼</span><br><span class="line">        │                              ┌───────────────────────┐</span><br><span class="line">        │                              │ R2S: Register → SMEM  │</span><br><span class="line">        │                              │ • copy rD to sD       │</span><br><span class="line">        │                              └───────────────────────┘</span><br><span class="line">        │                                            │</span><br><span class="line">◄───────────────────────────────────── │◄────────────┘</span><br><span class="line">        │   consumer_release(s0)                     │</span><br><span class="line">        │   arrive(empty[0])                         ▼</span><br><span class="line">        ▼                              ┌───────────────────────┐</span><br><span class="line">┌───────────────────────┐              │ TMA store D           │</span><br><span class="line">│ producer_acquire(s1)  │              │ • fence_async         │</span><br><span class="line">│ • wait(empty[1])      │              │ • copy sD → GMEM      │</span><br><span class="line">│ (可以继续加载下一个)   │              └───────────────────────┘</span><br><span class="line">└───────────────────────┘</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-数据流详解"><a href="#3-数据流详解" class="headerlink" title="3. 数据流详解"></a>3. 数据流详解</h2><h3 id="3-1-SMEM-布局示例"><a href="#3-1-SMEM-布局示例" class="headerlink" title="3.1 SMEM 布局示例"></a>3.1 SMEM 布局示例</h3><p>假设配置：<code>StagesC=4, StagesD=4, EpilogueTile=(64, 64), ElementC=half_t</code></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line">SharedStorage 内存布局:</span><br><span class="line">┌─────────────────────────────────────────────────────────────────────────┐</span><br><span class="line">│                           TensorStorage                                  │</span><br><span class="line">├─────────────────────────────────────────────────────────────────────────┤</span><br><span class="line">│  CollectiveStorage                                                       │</span><br><span class="line">│  ┌─────────────────────────────────────────────────────────────────────┐│</span><br><span class="line">│  │  smem_C[4 stages]                                                   ││</span><br><span class="line">│  │  ┌──────────┬──────────┬──────────┬──────────┐                      ││</span><br><span class="line">│  │  │ Stage 0  │ Stage 1  │ Stage 2  │ Stage 3  │                      ││</span><br><span class="line">│  │  │ 64x64    │ 64x64    │ 64x64    │ 64x64    │                      ││</span><br><span class="line">│  │  │ = 8 KB   │ = 8 KB   │ = 8 KB   │ = 8 KB   │  Total: 32 KB        ││</span><br><span class="line">│  │  └──────────┴──────────┴──────────┴──────────┘                      ││</span><br><span class="line">│  ├─────────────────────────────────────────────────────────────────────┤│</span><br><span class="line">│  │  smem_D[4 stages] (或与 smem_C 共用 if ReuseSmemC)                  ││</span><br><span class="line">│  │  ┌──────────┬──────────┬──────────┬──────────┐                      ││</span><br><span class="line">│  │  │ Stage 0  │ Stage 1  │ Stage 2  │ Stage 3  │                      ││</span><br><span class="line">│  │  │ 64x64    │ 64x64    │ 64x64    │ 64x64    │  Total: 32 KB        ││</span><br><span class="line">│  │  └──────────┴──────────┴──────────┴──────────┘                      ││</span><br><span class="line">│  └─────────────────────────────────────────────────────────────────────┘│</span><br><span class="line">├─────────────────────────────────────────────────────────────────────────┤</span><br><span class="line">│  FusionStorage (for bias, scale, aux)                                    │</span><br><span class="line">│  ┌─────────────────────────────────────────────────────────────────────┐│</span><br><span class="line">│  │  smem_bias[4 stages]                                                ││</span><br><span class="line">│  │  ┌──────────┬──────────┬──────────┬──────────┐                      ││</span><br><span class="line">│  │  │ Stage 0  │ Stage 1  │ Stage 2  │ Stage 3  │                      ││</span><br><span class="line">│  │  │ 64 elems │ 64 elems │ 64 elems │ 64 elems │  Total: 512 B        ││</span><br><span class="line">│  │  └──────────┴──────────┴──────────┴──────────┘                      ││</span><br><span class="line">│  └─────────────────────────────────────────────────────────────────────┘│</span><br><span class="line">├─────────────────────────────────────────────────────────────────────────┤</span><br><span class="line">│  PipelineStorage                                                         │</span><br><span class="line">│  ┌─────────────────────────────────────────────────────────────────────┐│</span><br><span class="line">│  │  full_barrier[4]   = 4 × 8 bytes = 32 bytes                         ││</span><br><span class="line">│  │  empty_barrier[4]  = 4 × 8 bytes = 32 bytes                         ││</span><br><span class="line">│  │                                               Total: 64 bytes        ││</span><br><span class="line">│  └─────────────────────────────────────────────────────────────────────┘│</span><br><span class="line">└─────────────────────────────────────────────────────────────────────────┘</span><br><span class="line">Total SMEM: ~64 KB (without ReuseSmemC) or ~32 KB (with ReuseSmemC)</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-寄存器使用示例"><a href="#3-2-寄存器使用示例" class="headerlink" title="3.2 寄存器使用示例"></a>3.2 寄存器使用示例</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line">Thread 寄存器分配 (假设 FragmentSize=2, MMA 输出 8x8 per thread):</span><br><span class="line"></span><br><span class="line">┌─────────────────────────────────────────────────────────────────────────┐</span><br><span class="line">│                      Per-Thread Register Usage                           │</span><br><span class="line">├─────────────────────────────────────────────────────────────────────────┤</span><br><span class="line">│                                                                          │</span><br><span class="line">│  Accumulator (from mainloop):                                            │</span><br><span class="line">│  ┌─────────────────────────────────────────────────────────────────────┐│</span><br><span class="line">│  │  rAcc[64]  = 64 × FP32 = 256 bytes (from MMA, 8x8 elements)         ││</span><br><span class="line">│  └─────────────────────────────────────────────────────────────────────┘│</span><br><span class="line">│                                                                          │</span><br><span class="line">│  Source C (loaded from SMEM):                                            │</span><br><span class="line">│  ┌─────────────────────────────────────────────────────────────────────┐│</span><br><span class="line">│  │  rC[64]    = 64 × FP16 = 128 bytes (converted to FP32 for compute)  ││</span><br><span class="line">│  └─────────────────────────────────────────────────────────────────────┘│</span><br><span class="line">│                                                                          │</span><br><span class="line">│  Bias (loaded from SMEM, broadcast per row):                             │</span><br><span class="line">│  ┌─────────────────────────────────────────────────────────────────────┐│</span><br><span class="line">│  │  rBias[8]  = 8 × FP16 = 16 bytes (8 rows)                           ││</span><br><span class="line">│  └─────────────────────────────────────────────────────────────────────┘│</span><br><span class="line">│                                                                          │</span><br><span class="line">│  Output D (computed result):                                             │</span><br><span class="line">│  ┌─────────────────────────────────────────────────────────────────────┐│</span><br><span class="line">│  │  rD[64]    = 64 × FP16 = 128 bytes (output elements)                ││</span><br><span class="line">│  └─────────────────────────────────────────────────────────────────────┘│</span><br><span class="line">│                                                                          │</span><br><span class="line">│  Scalar constants:                                                       │</span><br><span class="line">│  ┌─────────────────────────────────────────────────────────────────────┐│</span><br><span class="line">│  │  alpha, beta = 2 × FP32 = 8 bytes                                   ││</span><br><span class="line">│  └─────────────────────────────────────────────────────────────────────┘│</span><br><span class="line">│                                                                          │</span><br><span class="line">│  Approximate total: ~550 bytes per thread                                │</span><br><span class="line">│  For 256 threads/CTA: ~140 KB register usage                             │</span><br><span class="line">└─────────────────────────────────────────────────────────────────────────┘</span><br></pre></td></tr></table></figure>
+
+<h2 id="4-Pipeline-状态机"><a href="#4-Pipeline-状态机" class="headerlink" title="4. Pipeline 状态机"></a>4. Pipeline 状态机</h2><h3 id="4-1-PipelineState-结构"><a href="#4-1-PipelineState-结构" class="headerlink" title="4.1 PipelineState 结构"></a>4.1 PipelineState 结构</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="type">int</span> Stages&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">PipelineState</span> &#123;</span><br><span class="line">    <span class="type">int</span> index_ = <span class="number">0</span>;       <span class="comment">// 当前 stage (0 到 Stages-1)</span></span><br><span class="line">    <span class="type">uint32_t</span> phase_ = <span class="number">0</span>;  <span class="comment">// 当前 phase (0 或 1)</span></span><br><span class="line">    <span class="type">uint32_t</span> count_ = <span class="number">0</span>;  <span class="comment">// 总迭代次数</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 推进状态</span></span><br><span class="line">    <span class="type">void</span> <span class="keyword">operator</span>++() &#123;</span><br><span class="line">        ++index_;</span><br><span class="line">        ++count_;</span><br><span class="line">        <span class="keyword">if</span> (index_ == Stages) &#123;</span><br><span class="line">            index_ = <span class="number">0</span>;      <span class="comment">// 循环回 0</span></span><br><span class="line">            phase_ ^= <span class="number">1</span>;     <span class="comment">// 翻转 phase</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-2-4-Stage-Pipeline-状态转换示例"><a href="#4-2-4-Stage-Pipeline-状态转换示例" class="headerlink" title="4.2 4-Stage Pipeline 状态转换示例"></a>4.2 4-Stage Pipeline 状态转换示例</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">时间   Producer State          Consumer State         备注</span><br><span class="line">────   ──────────────          ──────────────         ────</span><br><span class="line">T0     (idx=0, ph=0, cnt=0)    (idx=0, ph=0, cnt=0)   初始状态</span><br><span class="line">       ↓ ++</span><br><span class="line">T1     (idx=1, ph=0, cnt=1)    (idx=0, ph=0, cnt=0)   Producer 领先</span><br><span class="line">       ↓ ++</span><br><span class="line">T2     (idx=2, ph=0, cnt=2)    (idx=0, ph=0, cnt=0)</span><br><span class="line">       ↓ ++                    ↓ ++</span><br><span class="line">T3     (idx=3, ph=0, cnt=3)    (idx=1, ph=0, cnt=1)   Consumer 开始追赶</span><br><span class="line">       ↓ ++                    ↓ ++</span><br><span class="line">T4     (idx=0, ph=1, cnt=4)    (idx=2, ph=0, cnt=2)   Producer 绕回, phase 翻转</span><br><span class="line">       │                       ↓ ++</span><br><span class="line">       │ wait(empty[0], ph=1)  (idx=3, ph=0, cnt=3)   Producer 必须等待</span><br><span class="line">       │                       ↓ ++</span><br><span class="line">       │                       (idx=0, ph=1, cnt=4)   Consumer 绕回</span><br><span class="line">       │                       │</span><br><span class="line">       │◄──── arrive(empty[0]) ┘                      Consumer 释放 stage 0</span><br><span class="line">       ↓ ++</span><br><span class="line">T5     (idx=1, ph=1, cnt=5)    ...                    Producer 可以继续</span><br></pre></td></tr></table></figure>
+
+<h2 id="5-EVT-节点详解"><a href="#5-EVT-节点详解" class="headerlink" title="5. EVT 节点详解"></a>5. EVT 节点详解</h2><h3 id="5-1-Leaf-节点"><a href="#5-1-Leaf-节点" class="headerlink" title="5.1 Leaf 节点"></a>5.1 Leaf 节点</h3><table>
+<thead>
+<tr>
+<th>节点类型</th>
+<th>数据来源</th>
+<th>回调时机</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Sm90AccFetch</code></td>
+<td>寄存器 (mainloop)</td>
+<td>visit()</td>
+<td>获取累加器值</td>
+</tr>
+<tr>
+<td><code>Sm90SrcFetch</code></td>
+<td>SMEM (C matrix)</td>
+<td>previsit() 加载</td>
+<td>获取 C 矩阵值</td>
+</tr>
+<tr>
+<td><code>Sm90ScalarBroadcast</code></td>
+<td>参数 (alpha, beta)</td>
+<td>begin() 加载</td>
+<td>广播标量到所有元素</td>
+</tr>
+<tr>
+<td><code>Sm90RowBroadcast</code></td>
+<td>SMEM (bias)</td>
+<td>previsit() 加载</td>
+<td>广播行向量</td>
+</tr>
+<tr>
+<td><code>Sm90ColBroadcast</code></td>
+<td>SMEM (scale)</td>
+<td>previsit() 加载</td>
+<td>广播列向量</td>
+</tr>
+</tbody></table>
+<h3 id="5-2-Internal-节点"><a href="#5-2-Internal-节点" class="headerlink" title="5.2 Internal 节点"></a>5.2 Internal 节点</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Sm90Compute 模板</span></span><br><span class="line"><span class="keyword">template</span> &lt;</span><br><span class="line">    <span class="keyword">template</span>&lt;<span class="keyword">class</span>&gt; <span class="keyword">class</span> <span class="title class_">ComputeFn</span>,  <span class="comment">// 计算函数 (plus, multiplies, ReLU, etc.)</span></span><br><span class="line">    <span class="keyword">class</span> <span class="title class_">ElementOutput</span>,               <span class="comment">// 输出类型</span></span><br><span class="line">    <span class="keyword">class</span> <span class="title class_">ElementCompute</span>,              <span class="comment">// 计算类型</span></span><br><span class="line">    FloatRoundStyle RoundStyle         <span class="comment">// 舍入模式</span></span><br><span class="line">&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">Sm90Compute</span> &#123;</span><br><span class="line">    <span class="comment">// visit() 执行计算</span></span><br><span class="line">    <span class="keyword">template</span> &lt;<span class="keyword">typename</span> Accumulator, <span class="keyword">typename</span>... Inputs&gt;</span><br><span class="line">    <span class="function">CUTLASS_DEVICE <span class="keyword">auto</span> <span class="title">visit</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        Accumulator <span class="type">const</span>&amp; acc,        <span class="comment">// 累加器片段</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="type">int</span> epi_v, <span class="type">int</span> epi_m, <span class="type">int</span> epi_n,  <span class="comment">// 位置</span></span></span></span><br><span class="line"><span class="params"><span class="function">        Inputs <span class="type">const</span>&amp;... inputs        <span class="comment">// 子节点输出</span></span></span></span><br><span class="line"><span class="params"><span class="function">    )</span> </span>&#123;</span><br><span class="line">        <span class="comment">// 应用计算函数</span></span><br><span class="line">        <span class="keyword">return</span> ComputeFn&lt;ElementCompute&gt;&#123;&#125;(inputs...);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="5-3-常用计算函数"><a href="#5-3-常用计算函数" class="headerlink" title="5.3 常用计算函数"></a>5.3 常用计算函数</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 二元操作</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">class</span> <span class="title class_">T</span>&gt; <span class="keyword">struct</span> <span class="title class_">plus</span>        &#123; <span class="function">T <span class="title">operator</span><span class="params">()</span><span class="params">(T a, T b)</span> </span>&#123; <span class="keyword">return</span> a + b; &#125; &#125;;</span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">class</span> <span class="title class_">T</span>&gt; <span class="keyword">struct</span> <span class="title class_">multiplies</span>  &#123; <span class="function">T <span class="title">operator</span><span class="params">()</span><span class="params">(T a, T b)</span> </span>&#123; <span class="keyword">return</span> a * b; &#125; &#125;;</span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">class</span> <span class="title class_">T</span>&gt; <span class="keyword">struct</span> <span class="title class_">multiply_add</span>&#123; <span class="function">T <span class="title">operator</span><span class="params">()</span><span class="params">(T a, T b, T c)</span> </span>&#123; <span class="keyword">return</span> a * b + c; &#125; &#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 激活函数</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">class</span> <span class="title class_">T</span>&gt; <span class="keyword">struct</span> <span class="title class_">ReLU</span>        &#123; <span class="function">T <span class="title">operator</span><span class="params">()</span><span class="params">(T x)</span> </span>&#123; <span class="keyword">return</span> <span class="built_in">max</span>(<span class="built_in">T</span>(<span class="number">0</span>), x); &#125; &#125;;</span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">class</span> <span class="title class_">T</span>&gt; <span class="keyword">struct</span> <span class="title class_">GELU</span>        &#123; <span class="function">T <span class="title">operator</span><span class="params">()</span><span class="params">(T x)</span> </span>&#123; <span class="keyword">return</span> x * <span class="number">0.5f</span> * (<span class="number">1</span> + <span class="built_in">erf</span>(x/<span class="built_in">sqrt</span>(<span class="number">2</span>))); &#125; &#125;;</span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">class</span> <span class="title class_">T</span>&gt; <span class="keyword">struct</span> <span class="title class_">SiLU</span>        &#123; <span class="function">T <span class="title">operator</span><span class="params">()</span><span class="params">(T x)</span> </span>&#123; <span class="keyword">return</span> x / (<span class="number">1</span> + <span class="built_in">exp</span>(-x)); &#125; &#125;;</span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">class</span> <span class="title class_">T</span>&gt; <span class="keyword">struct</span> <span class="title class_">Sigmoid</span>     &#123; <span class="function">T <span class="title">operator</span><span class="params">()</span><span class="params">(T x)</span> </span>&#123; <span class="keyword">return</span> <span class="number">1</span> / (<span class="number">1</span> + <span class="built_in">exp</span>(-x)); &#125; &#125;;</span><br></pre></td></tr></table></figure>
+
+<h2 id="6-回调函数调用时序"><a href="#6-回调函数调用时序" class="headerlink" title="6. 回调函数调用时序"></a>6. 回调函数调用时序</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line">┌─────────────────────────────────────────────────────────────────────────────────────┐</span><br><span class="line">│                           Fusion Callbacks 调用时序                                  │</span><br><span class="line">├─────────────────────────────────────────────────────────────────────────────────────┤</span><br><span class="line">│                                                                                      │</span><br><span class="line">│  Producer Load Warp:                                                                 │</span><br><span class="line">│  ┌────────────────────────────────────────────────────────────────────────────────┐ │</span><br><span class="line">│  │  pld_callbacks = fusion.get_producer_load_callbacks(args)                      │ │</span><br><span class="line">│  │                                                                                │ │</span><br><span class="line">│  │  pld_callbacks.begin()           // 初始化, 加载 scalar 到寄存器               │ │</span><br><span class="line">│  │  │                                                                             │ │</span><br><span class="line">│  │  for each subtile (epi_m, epi_n):                                              │ │</span><br><span class="line">│  │  │   pld_callbacks.step(barrier, epi_m, epi_n, ...)                            │ │</span><br><span class="line">│  │  │   │                           // TMA 加载 bias, scale 等到 SMEM             │ │</span><br><span class="line">│  │  │   └── TMA load C (if needed)                                                │ │</span><br><span class="line">│  │                                                                                │ │</span><br><span class="line">│  │  pld_callbacks.end()             // 清理 (通常为空)                            │ │</span><br><span class="line">│  └────────────────────────────────────────────────────────────────────────────────┘ │</span><br><span class="line">│                                                                                      │</span><br><span class="line">│  Consumer Store Warps:                                                               │</span><br><span class="line">│  ┌────────────────────────────────────────────────────────────────────────────────┐ │</span><br><span class="line">│  │  cst_callbacks = fusion.get_consumer_store_callbacks&lt;RefSrc&gt;(args)             │ │</span><br><span class="line">│  │                                                                                │ │</span><br><span class="line">│  │  cst_callbacks.begin()           // 初始化                                     │ │</span><br><span class="line">│  │  │                                                                             │ │</span><br><span class="line">│  │  for each subtile (epi_m, epi_n):                                              │ │</span><br><span class="line">│  │  │   cst_callbacks.begin_loop(epi_m, epi_n)                                    │ │</span><br><span class="line">│  │  │   │                           // per-subtile 初始化                         │ │</span><br><span class="line">│  │  │   │                                                                         │ │</span><br><span class="line">│  │  │   │   [consumer_wait for C]                                                 │ │</span><br><span class="line">│  │  │   │   [S2R copy C to register]                                              │ │</span><br><span class="line">│  │  │   │                                                                         │ │</span><br><span class="line">│  │  │   cst_callbacks.previsit(epi_m, epi_n, ...)                                 │ │</span><br><span class="line">│  │  │   │                           // SMEM → Register: bias, scale               │ │</span><br><span class="line">│  │  │   │                                                                         │ │</span><br><span class="line">│  │  │   for each fragment v:                                                      │ │</span><br><span class="line">│  │  │   │   result[v] = cst_callbacks.visit(acc[v], v, epi_m, epi_n)              │ │</span><br><span class="line">│  │  │   │   │                       // ★ 核心计算: EVT 树求值 ★                   │ │</span><br><span class="line">│  │  │   │   │                       // D = ReLU(α*acc + β*C + bias)               │ │</span><br><span class="line">│  │  │   │                                                                         │ │</span><br><span class="line">│  │  │   [R2S copy result to SMEM]                                                 │ │</span><br><span class="line">│  │  │                                                                             │ │</span><br><span class="line">│  │  │   cst_callbacks.tma_store(epi_m, epi_n, ...)                                │ │</span><br><span class="line">│  │  │                               // TMA store 前的回调 (可选 aux store)         │ │</span><br><span class="line">│  │  │                                                                             │ │</span><br><span class="line">│  │  │   [TMA store D]                                                             │ │</span><br><span class="line">│  │                                                                                │ │</span><br><span class="line">│  │  cst_callbacks.end()             // 最终处理 (如 absmax reduction)             │ │</span><br><span class="line">│  └────────────────────────────────────────────────────────────────────────────────┘ │</span><br><span class="line">└─────────────────────────────────────────────────────────────────────────────────────┘</span><br></pre></td></tr></table></figure>
+
+<h2 id="7-性能调优参数"><a href="#7-性能调优参数" class="headerlink" title="7. 性能调优参数"></a>7. 性能调优参数</h2><table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认值</th>
+<th>影响</th>
+<th>调优建议</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>StagesC</code></td>
+<td>4</td>
+<td>C 加载 pipeline 深度</td>
+<td>增加可隐藏延迟，但消耗更多 SMEM</td>
+</tr>
+<tr>
+<td><code>StagesD</code></td>
+<td>4</td>
+<td>D 存储 pipeline 深度</td>
+<td>通常与 StagesC 相同</td>
+</tr>
+<tr>
+<td><code>FragmentSize</code></td>
+<td>2</td>
+<td>向量化宽度</td>
+<td>2 for FP16, 1 for FP32</td>
+</tr>
+<tr>
+<td><code>ReuseSmemC</code></td>
+<td>false</td>
+<td>C&#x2F;D 共用 SMEM</td>
+<td>节省 SMEM 但需更复杂同步</td>
+</tr>
+<tr>
+<td><code>DelayTmaStore</code></td>
+<td>false</td>
+<td>延迟 TMA store</td>
+<td>提高指令交错，但增加延迟</td>
+</tr>
+<tr>
+<td><code>EpilogueTile</code></td>
+<td>(64, 64)</td>
+<td>Subtile 大小</td>
+<td>平衡并行度和寄存器压力</td>
+</tr>
+</tbody></table>
+<h2 id="8-相关源文件"><a href="#8-相关源文件" class="headerlink" title="8. 相关源文件"></a>8. 相关源文件</h2><table>
+<thead>
+<tr>
+<th>文件</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp</code></td>
+<td>CollectiveEpilogue 实现</td>
+</tr>
+<tr>
+<td><code>epilogue/fusion/operations.hpp</code></td>
+<td>FusionOperation 定义</td>
+</tr>
+<tr>
+<td><code>epilogue/fusion/callbacks.hpp</code></td>
+<td>FusionCallbacks 分发接口</td>
+</tr>
+<tr>
+<td><code>epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp</code></td>
+<td>EVT 特化</td>
+</tr>
+<tr>
+<td><code>epilogue/fusion/sm90_visitor_*.hpp</code></td>
+<td>EVT 节点实现</td>
+</tr>
+<tr>
+<td><code>pipeline/sm90_pipeline.hpp</code></td>
+<td>Pipeline 实现</td>
+</tr>
+<tr>
+<td><code>arch/barrier.h</code></td>
+<td>mbarrier PTX 封装</td>
+</tr>
+</tbody></table>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/CUTLASS/" rel="tag"># CUTLASS</a>
+              <a href="/tags/Epilogue/" rel="tag"># Epilogue</a>
+              <a href="/tags/Fusion/" rel="tag"># Fusion</a>
+              <a href="/tags/EVT/" rel="tag"># EVT</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2024/12/23/pipeline-barrier-ptx-mapping/" rel="prev" title="CUTLASS Pipeline 接口到 PTX 指令映射">
+                  <i class="fa fa-angle-left"></i> CUTLASS Pipeline 接口到 PTX 指令映射
+                </a>
+            </div>
+            <div class="post-nav-item">
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 2024 – 
+    <span itemprop="copyrightYear">2025</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">DrXuQian</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+</body>
+</html>

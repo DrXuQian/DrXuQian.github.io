@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222" media="(prefers-color-scheme: dark)"><meta name="generator" content="Hexo 8.1.1">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css" integrity="sha256-VHqXKFhhMxcpubYf9xiWdCiojEbY9NexQ4jh8AxbvcM=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"drxuqian.github.io","root":"/","images":"/images","scheme":"Gemini","darkmode":true,"version":"8.26.0","exturl":false,"sidebar":{"position":"left","width_expanded":320,"width_dual_column":240,"display":"post","padding":18,"offset":12},"hljswrap":true,"codeblock":{"theme":{"light":"default","dark":"tokyo-night-dark"},"prism":{"light":"prism","dark":"prism-dark"},"copy_button":{"enable":true,"style":"mac"},"fold":{"enable":false,"height":500},"language":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"duration":200,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js" defer></script>
+
+    <meta name="description" content="本文档详细说明 CUTLASS SM90 Pipeline 接口如何映射到底层的 mbarrier PTX 指令。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="CUTLASS Pipeline 接口到 PTX 指令映射">
+<meta property="og:url" content="https://drxuqian.github.io/2024/12/23/pipeline-barrier-ptx-mapping/index.html">
+<meta property="og:site_name" content="CUTLASS 学习笔记">
+<meta property="og:description" content="本文档详细说明 CUTLASS SM90 Pipeline 接口如何映射到底层的 mbarrier PTX 指令。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-12-22T16:00:00.000Z">
+<meta property="article:modified_time" content="2025-12-23T14:20:22.914Z">
+<meta property="article:author" content="DrXuQian">
+<meta property="article:tag" content="CUTLASS">
+<meta property="article:tag" content="PTX">
+<meta property="article:tag" content="Pipeline">
+<meta property="article:tag" content="mbarrier">
+<meta name="twitter:card" content="summary">
+
+
+<link rel="canonical" href="https://drxuqian.github.io/2024/12/23/pipeline-barrier-ptx-mapping/">
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://drxuqian.github.io/2024/12/23/pipeline-barrier-ptx-mapping/","path":"2024/12/23/pipeline-barrier-ptx-mapping/","title":"CUTLASS Pipeline 接口到 PTX 指令映射"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>CUTLASS Pipeline 接口到 PTX 指令映射 | CUTLASS 学习笔记</title>
+  
+
+
+
+
+
+
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous" defer></script>
+<script src="/js/utils.js" defer></script><script src="/js/motion.js" defer></script><script src="/js/sidebar.js" defer></script><script src="/js/next-boot.js" defer></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hexo-generator-searchdb/1.5.0/search.js" integrity="sha256-xFC6PJ82SL9b3WkGjFavNiA9gm5z6UBxWPiu4CYjptg=" crossorigin="anonymous" defer></script>
+<script src="/js/third-party/search/local-search.js" defer></script>
+
+
+
+
+
+
+
+  
+
+
+
+
+  
+
+  <script class="next-config" data-name="enableMath" type="application/json">false</script><script class="next-config" data-name="mathjax" type="application/json">{"enable":true,"tags":"none","per_page":true,"js":{"url":"https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js","integrity":"sha256-MASABpB4tYktI2Oitl4t+78w/lyA+D7b/s9GEP0JOGI="}}</script>
+<script src="/js/third-party/math/mathjax.js" defer></script>
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">CUTLASS 学习笔记</p>
+      <i class="logo-line"></i>
+    </a>
+      <p class="site-subtitle" itemprop="description">深入理解 NVIDIA CUTLASS 和 CuTE</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  <ul class="main-menu menu"><li class="menu-item menu-item-home"><a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a></li><li class="menu-item menu-item-archives"><a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a></li><li class="menu-item menu-item-categories"><a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a></li><li class="menu-item menu-item-tags"><a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a></li><li class="menu-item menu-item-about"><a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a></li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+      <div class="search-header">
+        <span class="search-icon">
+          <i class="fa fa-search"></i>
+        </span>
+        <div class="search-input-container">
+          <input autocomplete="off" autocapitalize="off" maxlength="80"
+                placeholder="搜索..." spellcheck="false"
+                type="search" class="search-input">
+        </div>
+        <span class="popup-btn-close" role="button">
+          <i class="fa fa-times-circle"></i>
+        </span>
+      </div>
+      <div class="search-result-container">
+        <div class="search-result-icon">
+          <i class="fa fa-spinner fa-pulse fa-5x"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E6%A0%B8%E5%BF%83%E6%A6%82%E5%BF%B5"><span class="nav-number">1.</span> <span class="nav-text">1. 核心概念</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-%E5%8F%8C-Barrier-%E6%9E%B6%E6%9E%84"><span class="nav-number">1.1.</span> <span class="nav-text">1.1 双 Barrier 架构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-SMEM-%E4%B8%AD%E7%9A%84-Barrier-%E5%AD%98%E5%82%A8"><span class="nav-number">1.2.</span> <span class="nav-text">1.2 SMEM 中的 Barrier 存储</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-PipelineState-%E7%BB%93%E6%9E%84"><span class="nav-number">1.3.</span> <span class="nav-text">1.3 PipelineState 结构</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-Pipeline-%E6%8E%A5%E5%8F%A3%E5%88%B0-PTX-%E6%98%A0%E5%B0%84%E6%80%BB%E8%A7%88"><span class="nav-number">2.</span> <span class="nav-text">2. Pipeline 接口到 PTX 映射总览</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-Producer-%E6%8E%A5%E5%8F%A3%E8%AF%A6%E8%A7%A3"><span class="nav-number">3.</span> <span class="nav-text">3. Producer 接口详解</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-producer-acquire"><span class="nav-number">3.1.</span> <span class="nav-text">3.1 producer_acquire</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-producer-commit"><span class="nav-number">3.2.</span> <span class="nav-text">3.2 producer_commit</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-producer-get-barrier"><span class="nav-number">3.3.</span> <span class="nav-text">3.3 producer_get_barrier</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-4-producer-tail"><span class="nav-number">3.4.</span> <span class="nav-text">3.4 producer_tail</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-Consumer-%E6%8E%A5%E5%8F%A3%E8%AF%A6%E8%A7%A3"><span class="nav-number">4.</span> <span class="nav-text">4. Consumer 接口详解</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#4-1-consumer-try-wait"><span class="nav-number">4.1.</span> <span class="nav-text">4.1 consumer_try_wait</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-2-consumer-wait"><span class="nav-number">4.2.</span> <span class="nav-text">4.2 consumer_wait</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-3-consumer-release"><span class="nav-number">4.3.</span> <span class="nav-text">4.3 consumer_release</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-mbarrier-64-bit-%E7%BB%93%E6%9E%84"><span class="nav-number">5.</span> <span class="nav-text">5. mbarrier 64-bit 结构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E5%AE%8C%E6%95%B4%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%A8%8B"><span class="nav-number">6.</span> <span class="nav-text">6. 完整工作流程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E5%A4%9A-Consumer-%E5%9C%BA%E6%99%AF"><span class="nav-number">7.</span> <span class="nav-text">7. 多 Consumer 场景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E6%BA%90%E7%A0%81%E5%8F%82%E8%80%83"><span class="nav-number">8.</span> <span class="nav-text">8. 源码参考</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="DrXuQian"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">DrXuQian</p>
+  <div class="site-description" itemprop="description">CUTLASS/CuTE 内部实现详解</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">2</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+          <a href="/categories/">
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+          <a href="/tags/">
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author animated">
+      <span class="links-of-author-item">
+        <a href="https://github.com/DrXuQian" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;DrXuQian" rel="noopener me" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://drxuqian.github.io/2024/12/23/pipeline-barrier-ptx-mapping/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="DrXuQian">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="CUTLASS 学习笔记">
+      <meta itemprop="description" content="CUTLASS/CuTE 内部实现详解">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="CUTLASS Pipeline 接口到 PTX 指令映射 | CUTLASS 学习笔记">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          CUTLASS Pipeline 接口到 PTX 指令映射
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2024-12-23 00:00:00" itemprop="dateCreated datePublished" datetime="2024-12-23T00:00:00+08:00">2024-12-23</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2025-12-23 22:20:22" itemprop="dateModified" datetime="2025-12-23T22:20:22+08:00">2025-12-23</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-folder"></i>
+      </span>
+      <span class="post-meta-item-text">分类于</span>
+        <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+          <a href="/categories/CUTLASS/" itemprop="url" rel="index"><span itemprop="name">CUTLASS</span></a>
+        </span>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><p>本文档详细说明 CUTLASS SM90 Pipeline 接口如何映射到底层的 mbarrier PTX 指令。</p>
+<span id="more"></span>
+
+<p>本文档详细说明 CUTLASS SM90 Pipeline 接口如何映射到底层的 mbarrier PTX 指令。</p>
+<h2 id="1-核心概念"><a href="#1-核心概念" class="headerlink" title="1. 核心概念"></a>1. 核心概念</h2><h3 id="1-1-双-Barrier-架构"><a href="#1-1-双-Barrier-架构" class="headerlink" title="1.1 双 Barrier 架构"></a>1.1 双 Barrier 架构</h3><p>Pipeline 使用双 Barrier 实现生产者-消费者同步：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">┌─────────────────────────────────────────────────────────────┐</span><br><span class="line">│                    Pipeline Stage [i]                        │</span><br><span class="line">│                                                              │</span><br><span class="line">│   ┌──────────────────┐          ┌──────────────────┐        │</span><br><span class="line">│   │   Full Barrier   │          │  Empty Barrier   │        │</span><br><span class="line">│   │ (数据就绪信号)    │          │ (空间释放信号)    │        │</span><br><span class="line">│   │                  │          │                  │        │</span><br><span class="line">│   │ ClusterTransaction│         │  ClusterBarrier  │        │</span><br><span class="line">│   │     Barrier      │          │                  │        │</span><br><span class="line">│   └──────────────────┘          └──────────────────┘        │</span><br><span class="line">│          ↑                              ↑                   │</span><br><span class="line">│     Producer 写完                  Consumer 用完             │</span><br><span class="line">│     数据后 signal                  数据后 signal             │</span><br><span class="line">└─────────────────────────────────────────────────────────────┘</span><br></pre></td></tr></table></figure>
+
+<table>
+<thead>
+<tr>
+<th>Barrier</th>
+<th>类型</th>
+<th>谁 Signal</th>
+<th>谁 Wait</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Full Barrier</strong></td>
+<td><code>ClusterTransactionBarrier</code></td>
+<td>Producer (TMA)</td>
+<td>Consumer</td>
+<td>“数据准备好了，可以读”</td>
+</tr>
+<tr>
+<td><strong>Empty Barrier</strong></td>
+<td><code>ClusterBarrier</code></td>
+<td>Consumer</td>
+<td>Producer</td>
+<td>“空间腾出来了，可以写”</td>
+</tr>
+</tbody></table>
+<h3 id="1-2-SMEM-中的-Barrier-存储"><a href="#1-2-SMEM-中的-Barrier-存储" class="headerlink" title="1.2 SMEM 中的 Barrier 存储"></a>1.2 SMEM 中的 Barrier 存储</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sm90_pipeline.hpp</span></span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">SharedStorage</span> &#123;</span><br><span class="line">    FullBarrier full_barrier_[Stages];   <span class="comment">// ClusterTransactionBarrier (64-bit mbarrier)</span></span><br><span class="line">    EmptyBarrier empty_barrier_[Stages]; <span class="comment">// ClusterBarrier (64-bit mbarrier)</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-3-PipelineState-结构"><a href="#1-3-PipelineState-结构" class="headerlink" title="1.3 PipelineState 结构"></a>1.3 PipelineState 结构</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="type">int</span> Stages_&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">PipelineState</span> &#123;</span><br><span class="line">    <span class="type">int</span> index_ = <span class="number">0</span>;       <span class="comment">// 当前 stage (0 ~ Stages-1)，循环取模</span></span><br><span class="line">    <span class="type">uint32_t</span> phase_ = <span class="number">0</span>;  <span class="comment">// 当前 phase (0 或 1)，每绕回一次翻转</span></span><br><span class="line">    <span class="type">uint32_t</span> count_ = <span class="number">0</span>;  <span class="comment">// 总迭代次数</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-Pipeline-接口到-PTX-映射总览"><a href="#2-Pipeline-接口到-PTX-映射总览" class="headerlink" title="2. Pipeline 接口到 PTX 映射总览"></a>2. Pipeline 接口到 PTX 映射总览</h2><table>
+<thead>
+<tr>
+<th>Pipeline 接口</th>
+<th>Barrier 类型</th>
+<th>底层方法</th>
+<th>PTX 指令</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>producer_acquire</code></td>
+<td>EmptyBarrier</td>
+<td><code>wait(phase)</code></td>
+<td><code>mbarrier.try_wait.parity</code> (spin)</td>
+</tr>
+<tr>
+<td><code>producer_acquire</code> (leader)</td>
+<td>FullBarrier</td>
+<td><code>arrive_and_expect_tx(bytes)</code></td>
+<td><code>mbarrier.arrive.expect_tx</code></td>
+</tr>
+<tr>
+<td><code>producer_commit</code></td>
+<td>FullBarrier</td>
+<td>TMA 硬件触发</td>
+<td><code>mbarrier.complete_tx</code></td>
+</tr>
+<tr>
+<td><code>producer_get_barrier</code></td>
+<td>FullBarrier</td>
+<td>返回指针</td>
+<td>(无 PTX)</td>
+</tr>
+<tr>
+<td><code>producer_tail</code></td>
+<td>EmptyBarrier</td>
+<td>循环 <code>wait</code> 所有 stages</td>
+<td><code>mbarrier.try_wait.parity</code></td>
+</tr>
+<tr>
+<td><code>consumer_try_wait</code></td>
+<td>FullBarrier</td>
+<td><code>try_wait(phase)</code></td>
+<td><code>mbarrier.try_wait.parity</code> (单次)</td>
+</tr>
+<tr>
+<td><code>consumer_wait</code></td>
+<td>FullBarrier</td>
+<td><code>wait(phase)</code></td>
+<td><code>mbarrier.try_wait.parity</code> (spin)</td>
+</tr>
+<tr>
+<td><code>consumer_release</code></td>
+<td>EmptyBarrier</td>
+<td><code>arrive(cta_id)</code></td>
+<td><code>mbarrier.arrive</code></td>
+</tr>
+</tbody></table>
+<h2 id="3-Producer-接口详解"><a href="#3-Producer-接口详解" class="headerlink" title="3. Producer 接口详解"></a>3. Producer 接口详解</h2><h3 id="3-1-producer-acquire"><a href="#3-1-producer-acquire" class="headerlink" title="3.1 producer_acquire"></a>3.1 producer_acquire</h3><p><strong>功能</strong>：等待 stage 空间可用，并设置期望的传输字节数</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sm90_pipeline.hpp:512</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">producer_acquire</span><span class="params">(<span class="type">uint32_t</span> stage, <span class="type">uint32_t</span> phase)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// Step 1: 等待 Consumer 释放空间</span></span><br><span class="line">    empty_barrier_ptr_[stage].<span class="built_in">wait</span>(phase);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Step 2: Leader 线程设置期望传输字节数</span></span><br><span class="line">    <span class="keyword">if</span> (params_.is_leader) &#123;</span><br><span class="line">        full_barrier_ptr_[stage].<span class="built_in">arrive_and_expect_tx</span>(params_.transaction_bytes);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX (wait - 阻塞式 spin loop):</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">LAB_WAIT:</span><br><span class="line">    mbarrier.try_wait.parity.shared::cta.b64 P1, [smem_addr], phase, 0x989680;</span><br><span class="line">    @P1 bra DONE;</span><br><span class="line">    bra LAB_WAIT;</span><br><span class="line">DONE:</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX (arrive_and_expect_tx):</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mbarrier.arrive.expect_tx.shared::cta.b64 _, [smem_addr], transaction_bytes;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-producer-commit"><a href="#3-2-producer-commit" class="headerlink" title="3.2 producer_commit"></a>3.2 producer_commit</h3><p><strong>功能</strong>：TMA 传输完成后，硬件自动触发 barrier 完成</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// TMA 硬件自动执行，等价于:</span></span><br><span class="line">full_barrier_ptr_[stage].<span class="built_in">complete_transaction</span>(bytes);</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX:</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mbarrier.complete_tx.shared::cluster.relaxed.cluster.b64 [smem_addr], transaction_bytes;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p><strong>注意</strong>：通常不需要软件显式调用，TMA 指令会自动在传输完成后触发此操作。</p>
+</blockquote>
+<h3 id="3-3-producer-get-barrier"><a href="#3-3-producer-get-barrier" class="headerlink" title="3.3 producer_get_barrier"></a>3.3 producer_get_barrier</h3><p><strong>功能</strong>：返回 Full Barrier 指针，用于 TMA descriptor</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sm90_pipeline.hpp:555</span></span><br><span class="line"><span class="function">ProducerBarrierType* <span class="title">producer_get_barrier</span><span class="params">(<span class="type">uint32_t</span> stage)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">reinterpret_cast</span>&lt;ProducerBarrierType*&gt;(&amp;full_barrier_ptr_[stage]);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>无 PTX 指令</strong>，仅返回 SMEM 地址供 TMA 使用。</p>
+<h3 id="3-4-producer-tail"><a href="#3-4-producer-tail" class="headerlink" title="3.4 producer_tail"></a>3.4 producer_tail</h3><p><strong>功能</strong>：防止 Producer block 过早退出，等待所有 stages 被 Consumer 释放</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sm90_pipeline.hpp:448</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">producer_tail</span><span class="params">(PipelineState state)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> count = <span class="number">0</span>; count &lt; Stages; ++count) &#123;</span><br><span class="line">        empty_barrier_ptr_[state.<span class="built_in">index</span>()].<span class="built_in">wait</span>(state.<span class="built_in">phase</span>());</span><br><span class="line">        ++state;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX:</strong> 循环 Stages 次执行 <code>mbarrier.try_wait.parity</code></p>
+<h2 id="4-Consumer-接口详解"><a href="#4-Consumer-接口详解" class="headerlink" title="4. Consumer 接口详解"></a>4. Consumer 接口详解</h2><h3 id="4-1-consumer-try-wait"><a href="#4-1-consumer-try-wait" class="headerlink" title="4.1 consumer_try_wait"></a>4.1 consumer_try_wait</h3><p><strong>功能</strong>：非阻塞尝试等待数据就绪</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sm90_pipeline.hpp:590</span></span><br><span class="line"><span class="function">ConsumerToken <span class="title">consumer_try_wait</span><span class="params">(<span class="type">uint32_t</span> stage, <span class="type">uint32_t</span> phase, <span class="type">uint32_t</span> skip_wait)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (skip_wait) &#123;</span><br><span class="line">        <span class="keyword">return</span> &#123;BarrierStatus::WaitDone&#125;;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="type">bool</span> barrier_status = full_barrier_ptr_[stage].<span class="built_in">try_wait</span>(phase);</span><br><span class="line">    <span class="keyword">return</span> &#123;<span class="built_in">static_cast</span>&lt;BarrierStatus&gt;(barrier_status)&#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX (单次尝试，无 spin):</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">mbarrier.try_wait.parity.shared::cta.b64 P1, [smem_addr], phase;</span><br><span class="line">selp.b32 result, 1, 0, P1;</span><br></pre></td></tr></table></figure>
+
+<p><strong>返回值</strong>：</p>
+<ul>
+<li><code>BarrierStatus::WaitDone</code> (1): 数据已就绪</li>
+<li><code>BarrierStatus::WaitAgain</code> (0): 数据未就绪，需要继续等待</li>
+</ul>
+<h3 id="4-2-consumer-wait"><a href="#4-2-consumer-wait" class="headerlink" title="4.2 consumer_wait"></a>4.2 consumer_wait</h3><p><strong>功能</strong>：阻塞等待数据就绪</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sm90_pipeline.hpp:611</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">consumer_wait</span><span class="params">(<span class="type">uint32_t</span> stage, <span class="type">uint32_t</span> phase)</span> </span>&#123;</span><br><span class="line">    full_barrier_ptr_[stage].<span class="built_in">wait</span>(phase);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 带 token 版本</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">consumer_wait</span><span class="params">(<span class="type">uint32_t</span> stage, <span class="type">uint32_t</span> phase, ConsumerToken barrier_token)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (barrier_token == BarrierStatus::WaitAgain) &#123;</span><br><span class="line">        full_barrier_ptr_[stage].<span class="built_in">wait</span>(phase);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果 WaitDone，直接跳过</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX (阻塞式 spin loop):</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">LAB_WAIT:</span><br><span class="line">    mbarrier.try_wait.parity.shared::cta.b64 P1, [smem_addr], phase, 0x989680;</span><br><span class="line">    @P1 bra DONE;</span><br><span class="line">    bra LAB_WAIT;</span><br><span class="line">DONE:</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-3-consumer-release"><a href="#4-3-consumer-release" class="headerlink" title="4.3 consumer_release"></a>4.3 consumer_release</h3><p><strong>功能</strong>：通知 Producer 空间已释放</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sm90_pipeline.hpp:628</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">consumer_release</span><span class="params">(<span class="type">uint32_t</span> stage, <span class="type">uint32_t</span> skip = <span class="literal">false</span>)</span> </span>&#123;</span><br><span class="line">    empty_barrier_ptr_[stage].<span class="built_in">arrive</span>(dst_blockid_, is_signaling_thread_ &amp; (!skip));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX (本地 CTA arrive):</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mbarrier.arrive.shared::cta.b64 _, [smem_addr];</span><br></pre></td></tr></table></figure>
+
+<p><strong>PTX (远程 Cluster arrive):</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">mapa.shared::cluster.u32 remAddr32, smem_addr, cta_id;</span><br><span class="line">mbarrier.arrive.shared::cluster.b64 _, [remAddr32];</span><br></pre></td></tr></table></figure>
+
+<h2 id="5-mbarrier-64-bit-结构"><a href="#5-mbarrier-64-bit-结构" class="headerlink" title="5. mbarrier 64-bit 结构"></a>5. mbarrier 64-bit 结构</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">┌─────────────────────────────────────────────────────────────────┐</span><br><span class="line">│                    mbarrier (64-bit)                            │</span><br><span class="line">├─────────────┬─────────────────────┬─────────────────────────────┤</span><br><span class="line">│  Phase Bit  │   Pending TX Count  │     Arrival Count           │</span><br><span class="line">│   (1 bit)   │     (~20 bits)      │      (~20 bits)             │</span><br><span class="line">├─────────────┼─────────────────────┼─────────────────────────────┤</span><br><span class="line">│ 0 或 1      │ 期望的传输字节数     │ 剩余需要 arrive 的线程数     │</span><br><span class="line">│ 每次完成翻转 │ TMA 完成时递减       │ 每次 arrive 递减             │</span><br><span class="line">└─────────────┴─────────────────────┴─────────────────────────────┘</span><br><span class="line"></span><br><span class="line">完成条件: Pending TX Count == 0 AND Arrival Count == 0</span><br><span class="line">         → Phase Bit 翻转</span><br></pre></td></tr></table></figure>
+
+<h2 id="6-完整工作流程"><a href="#6-完整工作流程" class="headerlink" title="6. 完整工作流程"></a>6. 完整工作流程</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line">Producer Warp                              Consumer Warp</span><br><span class="line">     │                                          │</span><br><span class="line">     ▼                                          │</span><br><span class="line">producer_acquire(state)                         │</span><br><span class="line">  ├─ wait(empty_barrier[stage], phase)          │</span><br><span class="line">  │    ← 等待 Consumer 释放空间                  │</span><br><span class="line">  └─ arrive_and_expect_tx(full_barrier, bytes)  │</span><br><span class="line">       ← 告知期望多少字节                        │</span><br><span class="line">     │                                          │</span><br><span class="line">     ▼                                          │</span><br><span class="line">发起 TMA 加载                                    │</span><br><span class="line">     │                                          │</span><br><span class="line">     ▼                                          │</span><br><span class="line">TMA 完成 → 硬件自动 complete_tx                  │</span><br><span class="line">     │         ← pending_tx 减到 0               │</span><br><span class="line">     │         ← phase 翻转!                     │</span><br><span class="line">     │                                          ▼</span><br><span class="line">     │                              consumer_try_wait(state)</span><br><span class="line">     │                                ← try_wait(full_barrier, phase)</span><br><span class="line">     │                                          │</span><br><span class="line">     │                                          ▼</span><br><span class="line">     │                              consumer_wait(state, token)</span><br><span class="line">     │                                ← 如果 WaitAgain，继续等待</span><br><span class="line">     │                                          │</span><br><span class="line">     │                                          ▼</span><br><span class="line">     │                              执行 MMA 计算</span><br><span class="line">     │                                          │</span><br><span class="line">     │                                          ▼</span><br><span class="line">     │                              consumer_release(state)</span><br><span class="line">     │                                ← arrive(empty_barrier)</span><br><span class="line">     │                                ← arrival_count 减到 0</span><br><span class="line">     │                                ← phase 翻转!</span><br><span class="line">     ▼                                          │</span><br><span class="line">producer_acquire(next_state)                    │</span><br><span class="line">  ← 现在可以写入这个 stage                       │</span><br></pre></td></tr></table></figure>
+
+<h2 id="7-多-Consumer-场景"><a href="#7-多-Consumer-场景" class="headerlink" title="7. 多 Consumer 场景"></a>7. 多 Consumer 场景</h2><p>当有多个 Consumer Warp Group 时：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 初始化时</span></span><br><span class="line">empty_barrier[stage].<span class="built_in">init</span>(arrival_count = num_consumers);  <span class="comment">// 例如 2</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 运行时</span></span><br><span class="line">Consumer0: empty_barrier[stage].<span class="built_in">arrive</span>()  <span class="comment">// count: 2→1</span></span><br><span class="line">Consumer1: empty_barrier[stage].<span class="built_in">arrive</span>()  <span class="comment">// count: 1→0 → phase flip!</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 只有所有 Consumer 都 arrive 后，Producer 才能继续</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="8-源码参考"><a href="#8-源码参考" class="headerlink" title="8. 源码参考"></a>8. 源码参考</h2><ul>
+<li>Pipeline 实现: <code>include/cutlass/pipeline/sm90_pipeline.hpp</code></li>
+<li>Barrier 封装: <code>include/cutlass/arch/barrier.h</code></li>
+<li>ClusterBarrier: <code>barrier.h:341-532</code></li>
+<li>ClusterTransactionBarrier: <code>barrier.h:538-690</code></li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/CUTLASS/" rel="tag"># CUTLASS</a>
+              <a href="/tags/Pipeline/" rel="tag"># Pipeline</a>
+              <a href="/tags/mbarrier/" rel="tag"># mbarrier</a>
+              <a href="/tags/PTX/" rel="tag"># PTX</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+            </div>
+            <div class="post-nav-item">
+                <a href="/2024/12/23/epilogue-fusion-architecture/" rel="next" title="CUTLASS Epilogue Fusion 架构详解">
+                  CUTLASS Epilogue Fusion 架构详解 <i class="fa fa-angle-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 2024 – 
+    <span itemprop="copyrightYear">2025</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">DrXuQian</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+</body>
+</html>
