@@ -1,6 +1,20 @@
-## SM90 GMMA 特化的 `mma_unpack` 详解
+---
+title: CUTLASS 代码走读：mma_unpack 详解
+date: 2024-12-24 11:00:00
+tags:
+  - CUTLASS
+  - CuTe
+  - GMMA
+  - SM90
+categories:
+  - GPU Computing
+---
 
-### 函数签名
+本文解析 SM90 GMMA 特化的 `mma_unpack` 函数，理解如何将 Tensor 展开为底层 WGMMA 指令的寄存器参数。
+
+<!-- more -->
+
+## 1. 函数签名
 
 ```cpp
 template <class MMA_Op, class... MMA_Args,

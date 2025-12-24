@@ -1,4 +1,20 @@
-## make_tiled_mma
+---
+title: CUTLASS 代码走读：make_tiled_mma 与 MMA_Atom
+date: 2024-12-24 10:30:00
+tags:
+  - CUTLASS
+  - CuTe
+  - TiledMMA
+  - SM90
+categories:
+  - GPU Computing
+---
+
+本文解析 CUTLASS 中 `make_tiled_mma` 函数和 `MMA_Atom` 类的实现，理解如何从 Atom MMA 构建 TiledMMA。
+
+<!-- more -->
+
+## 1. make_tiled_mma 函数
 
 ```C++
 //

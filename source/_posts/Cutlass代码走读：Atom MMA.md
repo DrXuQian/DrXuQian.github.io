@@ -1,4 +1,20 @@
-## MMA SS
+---
+title: CUTLASS 代码走读：Atom MMA (SS/RS 模式)
+date: 2024-12-24 10:00:00
+tags:
+  - CUTLASS
+  - CuTe
+  - GMMA
+  - SM90
+categories:
+  - GPU Computing
+---
+
+本文解析 CUTLASS 中 Atom MMA 的 SS 和 RS 两种模式，包括 WGMMA 指令的参数和 MMA_Traits 定义。
+
+<!-- more -->
+
+## 1. MMA SS 模式
 
 Atom MMA的一个例子：
 

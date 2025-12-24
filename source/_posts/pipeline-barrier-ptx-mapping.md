@@ -100,6 +100,20 @@ graph LR
 | **FullBarrier** | `ClusterTransactionBarrier` | Producer (TMA) | Consumer | "Data is ready" |
 | **EmptyBarrier** | `ClusterBarrier` | Consumer | Producer | "Buffer is free" |
 
+**语义说明**：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Full Barrier (数据就绪):                                    │
+│    - Producer 完成写入后 arrive                             │
+│    - Consumer wait 此 barrier 后才能读取                    │
+│                                                             │
+│  Empty Barrier (buffer 空闲):                               │
+│    - Consumer 消费完后 arrive                               │
+│    - Producer wait 此 barrier 后才能重用 buffer            │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## 2. PipelineState 详解
@@ -416,6 +430,91 @@ init_barriers(SharedStorage& storage, Params params, ClusterShape cluster_shape)
   }
   cutlass::arch::fence_barrier_init();
 }
+```
+
+**fence_barrier_init 的作用**：
+
+```cpp
+CUTLASS_DEVICE
+void fence_barrier_init() {
+    asm volatile(
+        "fence.mbarrier_init.release.cluster;"
+        ::);
+}
+```
+
+确保 barrier 初始化对 cluster 内所有 CTA 可见：
+
+```
+Thread 0 (初始化):                其他线程 / 其他 CTA:
+    │                                 │
+    ▼                                 │
+mbarrier.init(...)                    │
+mbarrier.init(...)                    │ 等待...
+    │                                 │
+    ▼                                 │
+fence.mbarrier_init.release ──────────┼──→ 现在可见
+    │                                 │
+    ▼                                 ▼
+                            可以安全使用 barrier
+```
+
+### 3.8 Arrival Count 详解
+
+**Cluster Size == 1（无 Multicast）**：
+
+```cpp
+multicast_consumer_arrival_count = params.num_consumers;  // 线程数
+```
+
+每个线程都执行 arrive。
+
+**Cluster Size > 1（Multicast）**：
+
+```cpp
+multicast_consumer_arrival_count =
+    (ClusterM + ClusterN - 1) * num_consumer_warpgroups_per_cluster;
+```
+
+**2×2 Cluster 计算示例**：
+
+```cpp
+// ClusterM = 2, ClusterN = 2
+// num_consumer_warpgroups = 2 (每 CTA)
+
+// 接收 multicast 的有效 CTA 数
+unique_cta_count = ClusterM + ClusterN - 1 = 2 + 2 - 1 = 3
+
+// 每个有效 CTA 的 warpgroups
+warpgroups_per_cta = 2
+
+// 总 arrival count
+multicast_consumer_arrival_count = 3 * 2 = 6
+```
+
+**为什么是 ClusterM + ClusterN - 1？**
+
+```
+Cluster = (2, 2), 以 CTA(0,0) 的 Producer 为例:
+
+              N
+           ┌─────────────────────────┐
+           │ CTA(0,0)  │  CTA(0,1)  │ ← B multicast (同一行)
+    M      │  (本CTA)  │    (B)     │
+           ├───────────┼────────────┤
+           │ CTA(1,0)  │  CTA(1,1)  │
+           │   (A)     │   (无关)   │
+           └─────────────────────────┘
+                ↑
+           A multicast (同一列)
+
+接收数据的 CTA:
+  - CTA(0,0): 接收 A 和 B (本 CTA)
+  - CTA(1,0): 接收 A
+  - CTA(0,1): 接收 B
+
+总计: 3 个 CTA = 2 + 2 - 1 ✓
+CTA(1,1) 不接收 CTA(0,0) 的任何数据！
 ```
 
 ---

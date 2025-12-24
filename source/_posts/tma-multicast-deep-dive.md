@@ -64,7 +64,97 @@ graph TB
 - **矩阵 A**：同一行的 CTA 共享相同的 A tile（沿 N 方向广播）
 - **矩阵 B**：同一列的 CTA 共享相同的 B tile（沿 M 方向广播）
 
-### 1.3 Multicast vs 独立加载
+### 1.3 CTA 数据共享关系
+
+```
+C[M, N] = A[M, K] × B[K, N]
+
+2×2 Cluster 的 CTA 分工:
+              N 方向
+         N_tile_0    N_tile_1
+        ┌───────────┬───────────┐
+M_tile_0│ CTA(0,0)  │ CTA(0,1)  │  ← 这两个需要相同的 A[M_tile_0]
+        ├───────────┼───────────┤
+M_tile_1│ CTA(1,0)  │ CTA(1,1)  │  ← 这两个需要相同的 A[M_tile_1]
+        └───────────┴───────────┘
+             ↑           ↑
+          需要相同    需要相同
+          B[N_tile_0] B[N_tile_1]
+```
+
+| 矩阵 | 共享规则 | 示例 |
+|------|----------|------|
+| A | 同一行的 CTA 共享 | CTA(0,0), CTA(0,1) 共享 A[M_tile_0] |
+| B | 同一列的 CTA 共享 | CTA(0,0), CTA(1,0) 共享 B[N_tile_0] |
+
+### 1.4 Multicast 加载分工策略
+
+```
+A 矩阵 (第一列 CTA 负责加载):
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  CTA(0,0) 加载 A[M_tile_0, K]                               │
+│      │                                                      │
+│      └──→ multicast ──→ CTA(0,0), CTA(0,1) 的 SMEM         │
+│                                                             │
+│  CTA(1,0) 加载 A[M_tile_1, K]                               │
+│      │                                                      │
+│      └──→ multicast ──→ CTA(1,0), CTA(1,1) 的 SMEM         │
+│                                                             │
+│  CTA(0,1), CTA(1,1): 不加载 A (从 multicast 接收)          │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+B 矩阵 (第一行 CTA 负责加载):
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  CTA(0,0) 加载 B[K, N_tile_0]                               │
+│      │                                                      │
+│      └──→ multicast ──→ CTA(0,0), CTA(1,0) 的 SMEM         │
+│                                                             │
+│  CTA(0,1) 加载 B[K, N_tile_1]                               │
+│      │                                                      │
+│      └──→ multicast ──→ CTA(0,1), CTA(1,1) 的 SMEM         │
+│                                                             │
+│  CTA(1,0), CTA(1,1): 不加载 B (从 multicast 接收)          │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**每个 CTA 的工作量**：
+
+| CTA | 加载 A | 加载 B | 说明 |
+|-----|--------|--------|------|
+| CTA(0,0) | ✓ | ✓ | 最忙，加载两份数据 |
+| CTA(0,1) | ✗ | ✓ | 只加载 B |
+| CTA(1,0) | ✓ | ✗ | 只加载 A |
+| CTA(1,1) | ✗ | ✗ | 不加载，全部 multicast |
+
+**带宽节省**：A 加载 2 次 (vs 4 次)，B 加载 2 次 (vs 4 次) → 节省 50%！
+
+### 1.5 数据流向图示
+
+```
+                    Global Memory
+                         │
+          ┌──────────────┼──────────────┐
+          │              │              │
+          ▼              ▼              ▼
+    A[M_tile_0]    A[M_tile_1]    B[N_tile_0]    B[N_tile_1]
+          │              │              │              │
+          │              │              │              │
+     CTA(0,0)       CTA(1,0)       CTA(0,0)       CTA(0,1)
+     加载 A0        加载 A1        加载 B0        加载 B1
+          │              │              │              │
+          │              │              │              │
+    ┌─────┴─────┐  ┌─────┴─────┐  ┌─────┴─────┐  ┌─────┴─────┐
+    │           │  │           │  │           │  │           │
+    ▼           ▼  ▼           ▼  ▼           ▼  ▼           ▼
+ CTA(0,0)   CTA(0,1) CTA(1,0) CTA(1,1) CTA(0,0) CTA(1,0) CTA(0,1) CTA(1,1)
+  SMEM_A     SMEM_A  SMEM_A   SMEM_A   SMEM_B   SMEM_B   SMEM_B   SMEM_B
+```
+
+### 1.6 Multicast vs 独立加载
 
 | 方式 | 带宽消耗 | 延迟 |
 |-----|---------|------|
@@ -592,6 +682,87 @@ bool is_same_row_or_col(int dst_block_id, dim3 block_id, ClusterShape cluster_sh
 - 使用 `mapa` 指令映射远程 SMEM 地址
 - `mbarrier.arrive.shared::cluster` 执行跨 SM arrive
 - `is_same_row_or_col` 函数确定需要 arrive 的目标 CTA
+
+**Consumer Release 初始化**：
+
+```cpp
+// 构造函数中设置
+auto [is_signaling_thread, dst_blockid] =
+    spread_arrivals_to_warpgroup(thread_idx % NumThreadsPerWarpGroup, warp_idx);
+
+is_signaling_thread_ &= is_same_row_or_col(dst_blockid_, block_id, cluster_shape);
+
+// 运行时 arrive
+void consumer_release(stage) {
+    empty_barrier.arrive(dst_blockid_, is_signaling_thread_);
+}
+```
+
+**spread_arrivals_to_warpgroup 实现**：
+
+```cpp
+cute::tuple<bool, uint32_t> spread_arrivals_to_warpgroup(
+    int thread_idx_in_warpgroup, int warp_idx)
+{
+    // 每 8 个线程选一个 signaling thread
+    // 128 threads / 16 CTA = 8
+    bool is_signaling_thread = (thread_idx_in_warpgroup % 8) == 0;
+
+    // 用 Swizzle Layout 分配 dst_blockid (0-15)
+    auto layout = cute::composition(Swizzle<2,0,-2>{},
+                                    Layout<Shape<_4,_4>,Stride<_4,_1>>{});
+    uint32_t thread_row = warp_idx % 4;
+    uint32_t thread_col = (thread_idx_in_warpgroup / 8) % 4;
+    uint32_t dst_blockid = layout(thread_row, thread_col);
+
+    return cute::make_tuple(is_signaling_thread, dst_blockid);
+}
+```
+
+**2×2 Cluster Arrive 流程示例**：
+
+```
+CTA(0,0) 的 Consumer Warpgroup 执行 consumer_release():
+
+                    Warpgroup 中 16 个 signaling threads
+                              │
+              ┌───────────────┼───────────────┐
+              │               │               │
+              ▼               ▼               ▼
+         CTA(0,0)        CTA(0,1)        CTA(1,0)         CTA(1,1)
+         barrier         barrier         barrier          barrier
+            ↑               ↑               ↑                ✗
+            │               │               │           (不是同行/同列)
+         arrive          arrive          arrive
+
+    is_same_row_or_col:  ✓ (self)    ✓ (same row)   ✓ (same col)    ✗
+
+每个 warpgroup 向 3 个有效 CTA 各发送 1 次 arrive
+2 个 warpgroups → 每个有效 CTA 收到 2 次 arrive
+3 个有效 CTA × 2 warpgroups = 6 total arrives
+```
+
+**远程 Barrier Arrive PTX**：
+
+```cpp
+static void arrive(ValueType const* smem_ptr, uint32_t cta_id, uint32_t pred) {
+    uint32_t smem_addr = cute::cast_smem_ptr_to_uint(smem_ptr);
+    if (pred) {
+        asm volatile(
+            "{\n\t"
+            ".reg .b32 remAddr32;\n\t"
+            "mapa.shared::cluster.u32  remAddr32, %0, %1;\n\t"  // 映射远程地址
+            "mbarrier.arrive.shared::cluster.b64  _, [remAddr32];\n\t"
+            "}"
+            :
+            : "r"(smem_addr), "r"(cta_id));
+    }
+}
+```
+
+关键指令：
+- `mapa.shared::cluster`: 本地 SMEM 地址 → 远程 CTA SMEM 地址
+- `mbarrier.arrive.shared::cluster`: 对远程 barrier 执行 arrive
 
 ### 8.4 TMA Multicast 与 FullBarrier
 

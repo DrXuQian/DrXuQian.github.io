@@ -1,6 +1,20 @@
-# Cute Tensor 的 Engine 类型详解
+---
+title: CuTe Tensor 的 Engine 类型详解
+date: 2024-12-24 12:00:00
+tags:
+  - CUTLASS
+  - CuTe
+  - Tensor
+  - Engine
+categories:
+  - GPU Computing
+---
 
-## Tensor 模板结构
+本文解析 CuTe 中 Tensor 的 Engine 类型，理解指针 Engine、ArrayEngine 和 ViewEngine 的区别与用途。
+
+<!-- more -->
+
+## 1. Tensor 模板结构
 
 ```cpp
 template <class Engine, class Layout>
