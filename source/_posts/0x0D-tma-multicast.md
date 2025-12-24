@@ -1,5 +1,5 @@
 ---
-title: CUTLASS SM90 TMA Multicast 深度解析
+title: "0x0D CUTLASS SM90 TMA Multicast Deep Dive"
 date: 2024-12-24
 categories:
   - CUTLASS
@@ -11,7 +11,7 @@ tags:
   - SM90
 ---
 
-本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA Multicast 机制，包括 multicast mask 的计算、Cluster 与 Multicast 的关系，以及在 GEMM 中的实际应用。
+This article explains NVIDIA Hopper (SM90) TMA Multicast mechanism, including multicast mask calculation, Cluster-Multicast relationship, and practical GEMM applications.
 
 <!-- more -->
 
@@ -67,58 +67,58 @@ graph TB
 ### 1.3 CTA 数据共享关系
 
 ```
-C[M, N] = A[M, K] × B[K, N]
+C[M, N] = A[M, K] x B[K, N]
 
-2×2 Cluster 的 CTA 分工:
-              N 方向
+2x2 Cluster CTA assignment:
+              N direction
          N_tile_0    N_tile_1
-        ┌───────────┬───────────┐
-M_tile_0│ CTA(0,0)  │ CTA(0,1)  │  ← 这两个需要相同的 A[M_tile_0]
-        ├───────────┼───────────┤
-M_tile_1│ CTA(1,0)  │ CTA(1,1)  │  ← 这两个需要相同的 A[M_tile_1]
-        └───────────┴───────────┘
-             ↑           ↑
-          需要相同    需要相同
+        +-----------+-----------+
+M_tile_0| CTA(0,0)  | CTA(0,1)  |  <- both need same A[M_tile_0]
+        +-----------+-----------+
+M_tile_1| CTA(1,0)  | CTA(1,1)  |  <- both need same A[M_tile_1]
+        +-----------+-----------+
+             ^           ^
+          need same   need same
           B[N_tile_0] B[N_tile_1]
 ```
 
-| 矩阵 | 共享规则 | 示例 |
-|------|----------|------|
-| A | 同一行的 CTA 共享 | CTA(0,0), CTA(0,1) 共享 A[M_tile_0] |
-| B | 同一列的 CTA 共享 | CTA(0,0), CTA(1,0) 共享 B[N_tile_0] |
+| Matrix | Sharing Rule | Example |
+|--------|--------------|---------|
+| A | same-row CTAs share | CTA(0,0), CTA(0,1) share A[M_tile_0] |
+| B | same-col CTAs share | CTA(0,0), CTA(1,0) share B[N_tile_0] |
 
-### 1.4 Multicast 加载分工策略
+### 1.4 Multicast Loading Strategy
 
 ```
-A 矩阵 (第一列 CTA 负责加载):
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│  CTA(0,0) 加载 A[M_tile_0, K]                               │
-│      │                                                      │
-│      └──→ multicast ──→ CTA(0,0), CTA(0,1) 的 SMEM         │
-│                                                             │
-│  CTA(1,0) 加载 A[M_tile_1, K]                               │
-│      │                                                      │
-│      └──→ multicast ──→ CTA(1,0), CTA(1,1) 的 SMEM         │
-│                                                             │
-│  CTA(0,1), CTA(1,1): 不加载 A (从 multicast 接收)          │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+Matrix A (first column CTAs load):
++-------------------------------------------------------------+
+|                                                             |
+|  CTA(0,0) loads A[M_tile_0, K]                              |
+|      |                                                      |
+|      +--> multicast --> CTA(0,0), CTA(0,1) SMEM             |
+|                                                             |
+|  CTA(1,0) loads A[M_tile_1, K]                              |
+|      |                                                      |
+|      +--> multicast --> CTA(1,0), CTA(1,1) SMEM             |
+|                                                             |
+|  CTA(0,1), CTA(1,1): don't load A (receive from multicast)  |
+|                                                             |
++-------------------------------------------------------------+
 
-B 矩阵 (第一行 CTA 负责加载):
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│  CTA(0,0) 加载 B[K, N_tile_0]                               │
-│      │                                                      │
-│      └──→ multicast ──→ CTA(0,0), CTA(1,0) 的 SMEM         │
-│                                                             │
-│  CTA(0,1) 加载 B[K, N_tile_1]                               │
-│      │                                                      │
-│      └──→ multicast ──→ CTA(0,1), CTA(1,1) 的 SMEM         │
-│                                                             │
-│  CTA(1,0), CTA(1,1): 不加载 B (从 multicast 接收)          │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+Matrix B (first row CTAs load):
++-------------------------------------------------------------+
+|                                                             |
+|  CTA(0,0) loads B[K, N_tile_0]                              |
+|      |                                                      |
+|      +--> multicast --> CTA(0,0), CTA(1,0) SMEM             |
+|                                                             |
+|  CTA(0,1) loads B[K, N_tile_1]                              |
+|      |                                                      |
+|      +--> multicast --> CTA(0,1), CTA(1,1) SMEM             |
+|                                                             |
+|  CTA(1,0), CTA(1,1): don't load B (receive from multicast)  |
+|                                                             |
++-------------------------------------------------------------+
 ```
 
 **每个 CTA 的工作量**：
@@ -136,22 +136,22 @@ B 矩阵 (第一行 CTA 负责加载):
 
 ```
                     Global Memory
-                         │
-          ┌──────────────┼──────────────┐
-          │              │              │
-          ▼              ▼              ▼
+                         |
+          +--------------+---------------+
+          |              |               |
+          v              v               v
     A[M_tile_0]    A[M_tile_1]    B[N_tile_0]    B[N_tile_1]
-          │              │              │              │
-          │              │              │              │
-     CTA(0,0)       CTA(1,0)       CTA(0,0)       CTA(0,1)
-     加载 A0        加载 A1        加载 B0        加载 B1
-          │              │              │              │
-          │              │              │              │
-    ┌─────┴─────┐  ┌─────┴─────┐  ┌─────┴─────┐  ┌─────┴─────┐
-    │           │  │           │  │           │  │           │
-    ▼           ▼  ▼           ▼  ▼           ▼  ▼           ▼
+          |              |               |              |
+          |              |               |              |
+     CTA(0,0)       CTA(1,0)        CTA(0,0)       CTA(0,1)
+     load A0        load A1         load B0        load B1
+          |              |               |              |
+          |              |               |              |
+    +-----+-----+  +-----+-----+   +-----+-----+  +-----+-----+
+    |           |  |           |   |           |  |           |
+    v           v  v           v   v           v  v           v
  CTA(0,0)   CTA(0,1) CTA(1,0) CTA(1,1) CTA(0,0) CTA(1,0) CTA(0,1) CTA(1,1)
-  SMEM_A     SMEM_A  SMEM_A   SMEM_A   SMEM_B   SMEM_B   SMEM_B   SMEM_B
+  SMEM_A     SMEM_A   SMEM_A   SMEM_A   SMEM_B   SMEM_B   SMEM_B   SMEM_B
 ```
 
 ### 1.6 Multicast vs 独立加载
@@ -722,24 +722,24 @@ cute::tuple<bool, uint32_t> spread_arrivals_to_warpgroup(
 **2×2 Cluster Arrive 流程示例**：
 
 ```
-CTA(0,0) 的 Consumer Warpgroup 执行 consumer_release():
+CTA(0,0) Consumer Warpgroup executes consumer_release():
 
-                    Warpgroup 中 16 个 signaling threads
-                              │
-              ┌───────────────┼───────────────┐
-              │               │               │
-              ▼               ▼               ▼
+                    16 signaling threads in Warpgroup
+                              |
+              +---------------+---------------+
+              |               |               |
+              v               v               v
          CTA(0,0)        CTA(0,1)        CTA(1,0)         CTA(1,1)
          barrier         barrier         barrier          barrier
-            ↑               ↑               ↑                ✗
-            │               │               │           (不是同行/同列)
+            ^               ^               ^                X
+            |               |               |           (not same row/col)
          arrive          arrive          arrive
 
-    is_same_row_or_col:  ✓ (self)    ✓ (same row)   ✓ (same col)    ✗
+    is_same_row_or_col:  Y (self)    Y (same row)   Y (same col)    N
 
-每个 warpgroup 向 3 个有效 CTA 各发送 1 次 arrive
-2 个 warpgroups → 每个有效 CTA 收到 2 次 arrive
-3 个有效 CTA × 2 warpgroups = 6 total arrives
+Each warpgroup sends 1 arrive to 3 valid CTAs
+2 warpgroups -> each valid CTA receives 2 arrives
+3 valid CTAs x 2 warpgroups = 6 total arrives
 ```
 
 **远程 Barrier Arrive PTX**：

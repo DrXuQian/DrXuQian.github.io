@@ -1,5 +1,5 @@
 ---
-title: CUTLASS SM90 Pipeline 与 mbarrier 深度解析
+title: "0x0B CUTLASS SM90 Pipeline and mbarrier PTX Mapping"
 date: 2024-12-23
 categories:
   - CUTLASS
@@ -11,7 +11,7 @@ tags:
   - SM90
 ---
 
-本文深入解析 CUTLASS SM90 Pipeline 机制及其底层 mbarrier PTX 指令的映射关系。所有代码引用均来自 NVIDIA CUTLASS 官方仓库。
+This article explains CUTLASS SM90 Pipeline mechanism and its underlying mbarrier PTX instruction mapping. All code references are from NVIDIA CUTLASS official repository.
 
 <!-- more -->
 
@@ -103,15 +103,15 @@ graph LR
 **语义说明**：
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Full Barrier (数据就绪):                                    │
-│    - Producer 完成写入后 arrive                             │
-│    - Consumer wait 此 barrier 后才能读取                    │
-│                                                             │
-│  Empty Barrier (buffer 空闲):                               │
-│    - Consumer 消费完后 arrive                               │
-│    - Producer wait 此 barrier 后才能重用 buffer            │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+|  Full Barrier (Data Ready):                                 |
+|    - Producer arrives after writing data                    |
+|    - Consumer waits on this barrier before reading          |
+|                                                             |
+|  Empty Barrier (Buffer Free):                               |
+|    - Consumer arrives after consuming data                  |
+|    - Producer waits on this barrier before reusing buffer   |
++-------------------------------------------------------------+
 ```
 
 ---
@@ -446,17 +446,17 @@ void fence_barrier_init() {
 确保 barrier 初始化对 cluster 内所有 CTA 可见：
 
 ```
-Thread 0 (初始化):                其他线程 / 其他 CTA:
-    │                                 │
-    ▼                                 │
-mbarrier.init(...)                    │
-mbarrier.init(...)                    │ 等待...
-    │                                 │
-    ▼                                 │
-fence.mbarrier_init.release ──────────┼──→ 现在可见
-    │                                 │
-    ▼                                 ▼
-                            可以安全使用 barrier
+Thread 0 (init):                  Other threads / CTAs:
+    |                                 |
+    v                                 |
+mbarrier.init(...)                    |
+mbarrier.init(...)                    | waiting...
+    |                                 |
+    v                                 |
+fence.mbarrier_init.release ----------+---> now visible
+    |                                 |
+    v                                 v
+                            safe to use barrier
 ```
 
 ### 3.8 Arrival Count 详解
@@ -495,26 +495,26 @@ multicast_consumer_arrival_count = 3 * 2 = 6
 **为什么是 ClusterM + ClusterN - 1？**
 
 ```
-Cluster = (2, 2), 以 CTA(0,0) 的 Producer 为例:
+Cluster = (2, 2), CTA(0,0) Producer example:
 
               N
-           ┌─────────────────────────┐
-           │ CTA(0,0)  │  CTA(0,1)  │ ← B multicast (同一行)
-    M      │  (本CTA)  │    (B)     │
-           ├───────────┼────────────┤
-           │ CTA(1,0)  │  CTA(1,1)  │
-           │   (A)     │   (无关)   │
-           └─────────────────────────┘
-                ↑
-           A multicast (同一列)
+           +-------------------------+
+           | CTA(0,0)  |  CTA(0,1)  | <- B multicast (same row)
+    M      |  (self)   |    (B)     |
+           +-----------+------------+
+           | CTA(1,0)  |  CTA(1,1)  |
+           |   (A)     |  (unrel.)  |
+           +-------------------------+
+                ^
+           A multicast (same col)
 
-接收数据的 CTA:
-  - CTA(0,0): 接收 A 和 B (本 CTA)
-  - CTA(1,0): 接收 A
-  - CTA(0,1): 接收 B
+Receiving CTAs:
+  - CTA(0,0): receives A and B (self)
+  - CTA(1,0): receives A
+  - CTA(0,1): receives B
 
-总计: 3 个 CTA = 2 + 2 - 1 ✓
-CTA(1,1) 不接收 CTA(0,0) 的任何数据！
+Total: 3 CTAs = 2 + 2 - 1
+CTA(1,1) does not receive any data from CTA(0,0)!
 ```
 
 ---

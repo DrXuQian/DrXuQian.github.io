@@ -1,5 +1,5 @@
 ---
-title: CUTLASS 代码走读：ss_op_selector 选择 MMA Atom
+title: "0x07 CUTLASS ss_op_selector MMA Atom Selection"
 date: 2024-12-24 11:30:00
 tags:
   - CUTLASS
@@ -10,7 +10,7 @@ categories:
   - GPU Computing
 ---
 
-本文解析 `ss_op_selector` 函数，理解 CUTLASS 如何根据数据类型和 TileShape 选择合适的 GMMA Atom。
+This article explains `ss_op_selector` function, understanding how CUTLASS selects appropriate GMMA Atom based on data types and TileShape.
 
 <!-- more -->
 

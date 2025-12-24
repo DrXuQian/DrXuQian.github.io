@@ -1,5 +1,5 @@
 ---
-title: CUTLASS SM90 Cooperative Kernel Pipeline 深度解析
+title: "0x09 CUTLASS SM90 Cooperative Kernel Pipeline"
 date: 2024-12-24
 categories:
   - CUTLASS
@@ -11,7 +11,7 @@ tags:
   - Warp Specialization
 ---
 
-本文深入解析 CUTLASS SM90 Cooperative Kernel 中的多种 Pipeline 机制，包括 Mainloop Pipeline、Epilogue Load/Store Pipeline、TileScheduler Pipeline 以及 LoadWarpOrderBarrier。
+This article explains CUTLASS SM90 Cooperative Kernel Pipeline mechanisms including Mainloop Pipeline, Epilogue Load/Store Pipeline, TileScheduler Pipeline, and LoadWarpOrderBarrier.
 
 <!-- more -->
 
@@ -32,17 +32,17 @@ Cooperative Kernel 使用 **Warp Specialization** 技术，将线程分为不同
 
 ```
 Thread Block (384 threads = 12 warps = 3 warp groups)
-├── WarpGroup 0: Producer (128 threads = 4 warps)
-│   ├── Warp 0: Mainloop Producer (TMA Load A/B)
-│   ├── Warp 1: Scheduler Producer (CLC Query)
-│   ├── Warp 2: Epilogue Producer (TMA Load C)
-│   └── Warp 3: MainloopAux Producer (辅助加载)
-│
-├── WarpGroup 1: Consumer0 (128 threads = 4 warps)
-│   └── 执行 MMA 计算 + Epilogue Store
-│
-└── WarpGroup 2: Consumer1 (128 threads = 4 warps)
-    └── 与 Consumer0 协作执行同一 tile
++-- WarpGroup 0: Producer (128 threads = 4 warps)
+|   +-- Warp 0: Mainloop Producer (TMA Load A/B)
+|   +-- Warp 1: Scheduler Producer (CLC Query)
+|   +-- Warp 2: Epilogue Producer (TMA Load C)
+|   +-- Warp 3: MainloopAux Producer (auxiliary load)
+|
++-- WarpGroup 1: Consumer0 (128 threads = 4 warps)
+|   +-- Execute MMA compute + Epilogue Store
+|
++-- WarpGroup 2: Consumer1 (128 threads = 4 warps)
+    +-- Cooperate with Consumer0 on same tile
 ```
 
 ### 1.2 角色定义

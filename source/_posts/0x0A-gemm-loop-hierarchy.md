@@ -1,5 +1,5 @@
 ---
-title: CUTLASS SM90 GEMM Loop 层次结构深度解析
+title: "0x0A CUTLASS SM90 GEMM Loop Hierarchy"
 date: 2024-12-24 16:00:00
 tags:
   - CUTLASS
@@ -10,7 +10,7 @@ categories:
   - GPU Computing
 ---
 
-本文深入解析 CUTLASS SM90 GEMM 中 M、N、K 维度的切分与循环层次结构，从 ProblemShape 到最内层 MMA 指令的完整映射过程。
+This article explains CUTLASS SM90 GEMM M/N/K dimension partitioning and loop hierarchy, from ProblemShape to innermost MMA instructions.
 
 <!-- more -->
 
@@ -20,10 +20,10 @@ CUTLASS SM90 GEMM 将 `ProblemShape (M, N, K)` 切分为多层循环：
 
 ```
 Level 0: Batch Loop (L dimension)
-└── Level 1: Tile Scheduler Loop (M_tiles × N_tiles)
-    └── Level 2: K-tile Loop (over K dimension)
-        └── Level 3: Warp MMA K Loop (within one K-tile)
-            └── Level 4: MMA Atom (hardware instruction)
++-- Level 1: Tile Scheduler Loop (M_tiles x N_tiles)
+    +-- Level 2: K-tile Loop (over K dimension)
+        +-- Level 3: Warp MMA K Loop (within one K-tile)
+            +-- Level 4: MMA Atom (hardware instruction)
 ```
 
 ### 1.1 伪代码总览
@@ -66,35 +66,35 @@ for (int l = 0; l < L; ++l) {                    // Batch dimension
 
 ```
 ProblemShape: (M, N, K, L)
-                │  │  │  │
-                ▼  ▼  ▼  ▼
-┌───────────────────────────────────────────────────────────┐
-│ TileShape: (BLK_M, BLK_N, BLK_K)                         │
-│   例如: (128, 256, 64)                                    │
-│                                                           │
-│ M_tiles = ceil(M / BLK_M)    // TileScheduler 遍历       │
-│ N_tiles = ceil(N / BLK_N)    // TileScheduler 遍历       │
-│ K_tiles = ceil(K / BLK_K)    // Mainloop K-tile 循环     │
-└───────────────────────────────────────────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────────────────────────┐
-│ ClusterShape: (Cluster_M, Cluster_N, 1)                  │
-│   例如: (2, 1, 1)                                         │
-│                                                           │
-│ 多个 CTA 组成一个 Cluster，共享数据 (TMA Multicast)        │
-│ Cluster 内 CTA 数 = Cluster_M × Cluster_N                │
-└───────────────────────────────────────────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────────────────────────┐
-│ MMA Atom Shape: 每次 MMA 指令处理的形状                    │
-│   例如 SM90 GMMA: M16N8K16 (FP16)                        │
-│                                                           │
-│ MMA_M = BLK_M / atom_M    // Warp 内 M 迭代次数          │
-│ MMA_N = BLK_N / atom_N    // Warp 内 N 迭代次数          │
-│ MMA_K = BLK_K / atom_K    // Warp 内 K 迭代次数          │
-└───────────────────────────────────────────────────────────┘
+                |  |  |  |
+                v  v  v  v
++-----------------------------------------------------------+
+| TileShape: (BLK_M, BLK_N, BLK_K)                          |
+|   e.g.: (128, 256, 64)                                    |
+|                                                           |
+| M_tiles = ceil(M / BLK_M)    // TileScheduler iterates    |
+| N_tiles = ceil(N / BLK_N)    // TileScheduler iterates    |
+| K_tiles = ceil(K / BLK_K)    // Mainloop K-tile loop      |
++-----------------------------------------------------------+
+                |
+                v
++-----------------------------------------------------------+
+| ClusterShape: (Cluster_M, Cluster_N, 1)                   |
+|   e.g.: (2, 1, 1)                                         |
+|                                                           |
+| Multiple CTAs form a Cluster, sharing data (TMA Multicast)|
+| CTAs per Cluster = Cluster_M x Cluster_N                  |
++-----------------------------------------------------------+
+                |
+                v
++-----------------------------------------------------------+
+| MMA Atom Shape: shape processed per MMA instruction       |
+|   e.g. SM90 GMMA: M16N8K16 (FP16)                         |
+|                                                           |
+| MMA_M = BLK_M / atom_M    // M iterations within warp     |
+| MMA_N = BLK_N / atom_N    // N iterations within warp     |
+| MMA_K = BLK_K / atom_K    // K iterations within warp     |
++-----------------------------------------------------------+
 ```
 
 ### 2.2 数值示例
@@ -401,19 +401,19 @@ graph TB
 
 ```
 Producer (TMA Load)              Consumer (MMA Compute)
-─────────────────────           ─────────────────────────
+---------------------            -------------------------
 
-for k_tile in K_tiles:          for k_tile in K_tiles:
-  │                               │
-  ├─ producer_acquire(stage)      ├─ consumer_wait(stage)
-  │                               │
-  ├─ TMA_load_A[k_tile]           ├─ for k in MMA_K:
-  ├─ TMA_load_B[k_tile]           │     for m in MMA_M:
-  │                               │       for n in MMA_N:
-  ├─ (implicit commit via TMA)    │         GMMA(A,B,C)
-  │                               │
-  └─ ++stage                      ├─ consumer_release(stage)
-                                  └─ ++stage
+for k_tile in K_tiles:           for k_tile in K_tiles:
+  |                                |
+  +- producer_acquire(stage)       +- consumer_wait(stage)
+  |                                |
+  +- TMA_load_A[k_tile]            +- for k in MMA_K:
+  +- TMA_load_B[k_tile]            |     for m in MMA_M:
+  |                                |       for n in MMA_N:
+  +- (implicit commit via TMA)     |         GMMA(A,B,C)
+  |                                |
+  +- ++stage                       +- consumer_release(stage)
+                                   +- ++stage
 ```
 
 ---

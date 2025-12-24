@@ -1,5 +1,5 @@
 ---
-title: CUTLASS 代码走读：Atom MMA (SS/RS 模式)
+title: "0x04 CUTLASS Atom MMA (SS/RS Mode)"
 date: 2024-12-24 10:00:00
 tags:
   - CUTLASS
@@ -10,7 +10,7 @@ categories:
   - GPU Computing
 ---
 
-本文解析 CUTLASS 中 Atom MMA 的 SS 和 RS 两种模式，包括 WGMMA 指令的参数和 MMA_Traits 定义。
+This article explains CUTLASS Atom MMA SS and RS modes, including WGMMA instruction parameters and MMA_Traits definitions.
 
 <!-- more -->
 

@@ -1,5 +1,5 @@
 ---
-title: CUTLASS SM90 TMA Descriptor 深度解析
+title: "0x0C CUTLASS SM90 TMA Descriptor Deep Dive"
 date: 2024-12-24
 categories:
   - CUTLASS
@@ -11,7 +11,7 @@ tags:
   - PTX
 ---
 
-本文深入解析 NVIDIA Hopper (SM90) 架构的 TMA（Tensor Memory Accelerator）机制，包括 Descriptor 构建、Prefetch、Copy 指令以及与 CuTe Tensor 的集成。
+This article explains NVIDIA Hopper (SM90) TMA (Tensor Memory Accelerator) mechanism, including Descriptor construction, Prefetch, Copy instructions, and CuTe Tensor integration.
 
 <!-- more -->
 

@@ -1,15 +1,17 @@
 ---
-title: elect_one_sync 与 Warp 级别 Leader 选举
+title: "0x02 elect_one_sync and Warp-Level Leader Election"
 date: 2024-12-24
 categories: [CUDA, PTX, Hopper]
 tags: [elect, warp, synchronization, leader]
 ---
 
-# elect_one_sync 与 Warp 级别 Leader 选举
+This article compares `elect.sync` instruction with the traditional `threadIdx % 32 == 0` method for warp-level leader election.
 
-## 1. 引言
+<!-- more -->
 
-在 CUDA 编程中，经常需要在一个 warp 中选择一个"leader"线程执行某些操作（如 barrier arrive、初始化等）。本文对比 `elect.sync` 指令和传统的 `threadIdx % 32 == 0` 方法。
+## 1. Introduction
+
+In CUDA programming, we often need to select a "leader" thread in a warp to execute certain operations (like barrier arrive, initialization, etc.). This article compares `elect.sync` instruction with the traditional `threadIdx % 32 == 0` method.
 
 ## 2. 两种方法对比
 
@@ -41,13 +43,13 @@ if (some_condition) {  // 假设只有部分线程满足条件
 Warp 32 threads:
 
 Lane:  0   1   2   3   4   5   6   7  ...  31
-       ✗   ✓   ✓   ✗   ✓   ✓   ✓   ✗  ...  ✓
-       │   │
-       │   └── 活跃
-       └────── 不活跃 (Lane 0 没有进入这个分支!)
+       x   o   o   x   o   o   o   x  ...  o
+       |   |
+       |   +-- active
+       +------ inactive (Lane 0 not in this branch!)
 
-threadIdx % 32 == 0: 没人满足条件！
-elect.sync: 从活跃线程中选一个 (例如 Lane 1)
+threadIdx % 32 == 0: no one satisfies!
+elect.sync: picks from active threads (e.g., Lane 1)
 ```
 
 ## 4. elect.sync PTX 指令

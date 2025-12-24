@@ -1,5 +1,5 @@
 ---
-title: CuTe Tensor 的 Engine 类型详解
+title: "0x08 CuTe Tensor Engine Types"
 date: 2024-12-24 12:00:00
 tags:
   - CUTLASS
@@ -10,7 +10,7 @@ categories:
   - GPU Computing
 ---
 
-本文解析 CuTe 中 Tensor 的 Engine 类型，理解指针 Engine、ArrayEngine 和 ViewEngine 的区别与用途。
+This article explains CuTe Tensor Engine types: pointer Engine, ArrayEngine, and ViewEngine - their differences and use cases.
 
 <!-- more -->
 

@@ -1,5 +1,5 @@
 ---
-title: CUTLASS 代码走读：mma_unpack 详解
+title: "0x06 CUTLASS mma_unpack Deep Dive"
 date: 2024-12-24 11:00:00
 tags:
   - CUTLASS
@@ -10,7 +10,7 @@ categories:
   - GPU Computing
 ---
 
-本文解析 SM90 GMMA 特化的 `mma_unpack` 函数，理解如何将 Tensor 展开为底层 WGMMA 指令的寄存器参数。
+This article explains SM90 GMMA specialized `mma_unpack` function, understanding how to unpack Tensor into WGMMA register parameters.
 
 <!-- more -->
 
