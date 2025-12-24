@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><title>0x03 ABLayout vs ALayout_64x16 - SS and RS Mode TV Layout - CUTLASS 学习笔记</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0d1117"><meta name="application-name" content="CUTLASS 学习笔记"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="msapplication-TileColor" content="#0d1117"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CUTLASS 学习笔记"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="This article compares two TV Layout types for WGMMA operand access: ABLayout (SS mode) vs ALayout_64x16 (RS mode)."><meta property="og:type" content="blog"><meta property="og:title" content="0x03 ABLayout vs ALayout_64x16 - SS and RS Mode TV Layout"><meta property="og:url" content="https://drxuqian.github.io/2024/12/24/0x03-ablayout-vs-alayout/"><meta property="og:site_name" content="CUTLASS 学习笔记"><meta property="og:description" content="This article compares two TV Layout types for WGMMA operand access: ABLayout (SS mode) vs ALayout_64x16 (RS mode)."><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://drxuqian.github.io/img/og_image.png"><meta property="article:published_time" content="2024-12-23T16:00:00.000Z"><meta property="article:modified_time" content="2025-12-24T14:06:11.243Z"><meta property="article:author" content="DrXuQian"><meta property="article:tag" content="layout"><meta property="article:tag" content="wgmma"><meta property="article:tag" content="ss-mode"><meta property="article:tag" content="rs-mode"><meta property="article:tag" content="tv-layout"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://drxuqian.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://drxuqian.github.io/2024/12/24/0x03-ablayout-vs-alayout/"},"headline":"0x03 ABLayout vs ALayout_64x16 - SS and RS Mode TV Layout","image":["https://drxuqian.github.io/img/og_image.png"],"datePublished":"2024-12-23T16:00:00.000Z","dateModified":"2025-12-24T14:06:11.243Z","author":{"@type":"Person","name":"DrXuQian"},"publisher":{"@type":"Organization","name":"CUTLASS 学习笔记","logo":{"@type":"ImageObject","url":"https://drxuqian.github.io/img/logo.svg"}},"description":"This article compares two TV Layout types for WGMMA operand access: ABLayout (SS mode) vs ALayout_64x16 (RS mode)."}</script><link rel="canonical" href="https://drxuqian.github.io/2024/12/24/0x03-ablayout-vs-alayout/"><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link data-pjax rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link data-pjax rel="stylesheet" href="/css/default.css"><style>body>.footer,body>.navbar,body>.section{opacity:0}</style><!--!--><!--!--><!--!--><script src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" defer></script><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.1"><link rel="stylesheet" href="/css/custom.css"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">Home</a><a class="navbar-item" href="/archives">Archives</a><a class="navbar-item" href="/categories">Categories</a><a class="navbar-item" href="/tags">Tags</a><a class="navbar-item" href="/about">About</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2024-12-23T16:00:00.000Z" title="12/24/2024, 12:00:00 AM">2024-12-24</time>发表</span><span class="level-item"><time dateTime="2025-12-24T14:06:11.243Z" title="12/24/2025, 10:06:11 PM">2025-12-24</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/CUDA/">CUDA</a><span> / </span><a class="link-muted" href="/categories/CUDA/CuTe/">CuTe</a><span> / </span><a class="link-muted" href="/categories/CUDA/CuTe/CUTLASS/">CUTLASS</a></span><span class="level-item">8 分钟读完 (大约1207个字)</span><span class="level-item" id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv">0</span>次访问</span></div></div><h1 class="title is-3 is-size-4-mobile">0x03 ABLayout vs ALayout_64x16 - SS and RS Mode TV Layout</h1><div class="content"><p>This article compares two TV Layout types for WGMMA operand access: ABLayout (SS mode) vs ALayout_64x16 (RS mode).</p>
+<span id="more"></span>
+
+<h2 id="1-Introduction"><a href="#1-Introduction" class="headerlink" title="1. Introduction"></a>1. Introduction</h2><p>In CUTLASS WGMMA (Warpgroup Matrix Multiply-Accumulate), there are two operand access modes:</p>
+<ul>
+<li><strong>SS mode</strong>: A and B both in Shared Memory, uses <code>ABLayout</code></li>
+<li><strong>RS mode</strong>: A in Register, B in Shared Memory, uses <code>ALayout_64x16</code></li>
+</ul>
+<p>This article compares these two TV Layout structures, mapping functions, and semantic differences.</p>
+<h2 id="2-Layout-定义"><a href="#2-Layout-定义" class="headerlink" title="2. Layout 定义"></a>2. Layout 定义</h2><h3 id="2-1-ABLayout-SS-模式"><a href="#2-1-ABLayout-SS-模式" class="headerlink" title="2.1 ABLayout (SS 模式)"></a>2.1 ABLayout (SS 模式)</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Shared memory source layouts for any value type</span></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="type">int</span> M, <span class="type">int</span> K&gt;</span><br><span class="line"><span class="keyword">using</span> ABLayout = Layout&lt;Shape &lt;_128, Shape &lt;Int&lt;M&gt;, Int&lt;K&gt;&gt;&gt;,</span><br><span class="line">                        Stride&lt;  _0, Stride&lt;    _1, Int&lt;M&gt;&gt;&gt;&gt;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-ALayout-64x16-RS-模式"><a href="#2-2-ALayout-64x16-RS-模式" class="headerlink" title="2.2 ALayout_64x16 (RS 模式)"></a>2.2 ALayout_64x16 (RS 模式)</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Register source layout for 16-bit (sparse 32-bit) value types</span></span><br><span class="line"><span class="keyword">using</span> ALayout_64x16 = Layout&lt;Shape &lt;Shape &lt;  _4, _8, _4&gt;, Shape &lt; _2, _2,  _2&gt;&gt;,</span><br><span class="line">                             Stride&lt;Stride&lt;_128, _1, _16&gt;, Stride&lt;_64, _8, _512&gt;&gt;&gt;;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="3-ABLayout-详解"><a href="#3-ABLayout-详解" class="headerlink" title="3. ABLayout 详解"></a>3. ABLayout 详解</h2><h3 id="3-1-实例化-ABLayout"><a href="#3-1-实例化-ABLayout" class="headerlink" title="3.1 实例化 ABLayout&lt;64, 16&gt;"></a>3.1 实例化 ABLayout&lt;64, 16&gt;</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">ABLayout&lt;<span class="number">64</span>, <span class="number">16</span>&gt; = Layout&lt;</span><br><span class="line">    Shape &lt;_128,        Shape &lt;_64, _16&gt;&gt;,    <span class="comment">// (Thr, (Val_M, Val_K))</span></span><br><span class="line">    Stride&lt;  _0,        Stride&lt; _1, _64&gt;&gt;     <span class="comment">// (Thr_stride, (Val_M_stride, Val_K_stride))</span></span><br><span class="line">&gt;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-维度分解"><a href="#3-2-维度分解" class="headerlink" title="3.2 维度分解"></a>3.2 维度分解</h3><table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Shape</th>
+<th>Stride</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Thr</strong></td>
+<td>128</td>
+<td><strong>0</strong></td>
+<td>128 个线程，stride&#x3D;0</td>
+</tr>
+<tr>
+<td><strong>Val_M</strong></td>
+<td>64</td>
+<td>1</td>
+<td>M 方向 64 行</td>
+</tr>
+<tr>
+<td><strong>Val_K</strong></td>
+<td>16</td>
+<td>64</td>
+<td>K 方向 16 列</td>
+</tr>
+</tbody></table>
+<h3 id="3-3-映射函数"><a href="#3-3-映射函数" class="headerlink" title="3.3 映射函数"></a>3.3 映射函数</h3><p>TV Layout 本质是一个函数：</p>
+<p>$$<br>f: (\text{thread_id}, \text{value_id}) \rightarrow \text{offset}<br>$$</p>
+<p>对于 ABLayout：</p>
+<p>$$<br>\text{offset}(\text{thr}, v_m, v_k) &#x3D; \text{thr} \times 0 + v_m \times 1 + v_k \times 64<br>$$</p>
+<p><strong>简化为：</strong></p>
+<p>$$<br>\boxed{\text{offset}(v_m, v_k) &#x3D; v_m + v_k \times 64}<br>$$</p>
+<h3 id="3-4-Thr-Stride-0-的含义"><a href="#3-4-Thr-Stride-0-的含义" class="headerlink" title="3.4 Thr Stride &#x3D; 0 的含义"></a>3.4 Thr Stride &#x3D; 0 的含义</h3><p>这是 ABLayout 最关键的特性：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">Thread Stride = 0 意味着:</span><br><span class="line"></span><br><span class="line">  offset(thread_0,   v_m, v_k) = v_m + v_k × 64</span><br><span class="line">  offset(thread_1,   v_m, v_k) = v_m + v_k * 64   &lt;- same!</span><br><span class="line">  offset(thread_2,   v_m, v_k) = v_m + v_k * 64   &lt;- same!</span><br><span class="line">  ...</span><br><span class="line">  offset(thread_127, v_m, v_k) = v_m + v_k * 64   &lt;- same!</span><br><span class="line"></span><br><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|       All 128 threads compute the same offset!              |</span><br><span class="line">|                                                             |</span><br><span class="line">|       They share the same SMEM data block                   |</span><br><span class="line">+-------------------------------------------------------------+</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-5-64x16-Matrix-Offset-Distribution"><a href="#3-5-64x16-Matrix-Offset-Distribution" class="headerlink" title="3.5 64x16 Matrix Offset Distribution"></a>3.5 64x16 Matrix Offset Distribution</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">64x16 Matrix (Column-Major, shared by all threads):</span><br><span class="line"></span><br><span class="line">        k=0    k=1    k=2    ...    k=15</span><br><span class="line">       +------+------+------+------+------+</span><br><span class="line">  m=0  |   0  |  64  | 128  | ...  | 960  |</span><br><span class="line">       +------+------+------+------+------+</span><br><span class="line">  m=1  |   1  |  65  | 129  | ...  | 961  |</span><br><span class="line">       +------+------+------+------+------+</span><br><span class="line">  m=2  |   2  |  66  | 130  | ...  | 962  |</span><br><span class="line">       +------+------+------+------+------+</span><br><span class="line">  ...  | ...  | ...  | ...  | ...  | ...  |</span><br><span class="line">       +------+------+------+------+------+</span><br><span class="line">  m=63 |  63  | 127  | 191  | ...  | 1023 |</span><br><span class="line">       +------+------+------+------+------+</span><br><span class="line"></span><br><span class="line">       offset = m + k x 64</span><br><span class="line"></span><br><span class="line">       Total 64 x 16 = 1024 elements</span><br><span class="line">       All 128 threads can access the entire matrix</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-6-SS-Mode-Data-Flow"><a href="#3-6-SS-Mode-Data-Flow" class="headerlink" title="3.6 SS Mode Data Flow"></a>3.6 SS Mode Data Flow</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|                    SS Mode (ABLayout)                       |</span><br><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|                                                             |</span><br><span class="line">|  GMEM --TMA--&gt; SMEM --descriptor--&gt; WGMMA Hardware          |</span><br><span class="line">|                  ^                                          |</span><br><span class="line">|           64-bit descriptor                                 |</span><br><span class="line">|           points to SMEM start address                      |</span><br><span class="line">|                  ^                                          |</span><br><span class="line">|         shared by all 128 threads                           |</span><br><span class="line">|                                                             |</span><br><span class="line">|  Feature: data stays in SMEM, HW reads directly, no load    |</span><br><span class="line">|                                                             |</span><br><span class="line">+-------------------------------------------------------------+</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="4-ALayout-64x16-详解"><a href="#4-ALayout-64x16-详解" class="headerlink" title="4. ALayout_64x16 详解"></a>4. ALayout_64x16 详解</h2><h3 id="4-1-结构分解"><a href="#4-1-结构分解" class="headerlink" title="4.1 结构分解"></a>4.1 结构分解</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">ALayout_64x16 = Layout&lt;</span><br><span class="line">    Shape &lt;Shape &lt;  _4, _8, _4&gt;, Shape &lt; _2, _2,  _2&gt;&gt;,</span><br><span class="line">    Stride&lt;Stride&lt;_128, _1, _16&gt;, Stride&lt;_64, _8, _512&gt;&gt;</span><br><span class="line">&gt;;</span><br></pre></td></tr></table></figure>
+
+<table>
+<thead>
+<tr>
+<th>部分</th>
+<th>Shape</th>
+<th>Stride</th>
+<th>元素数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Thr</strong></td>
+<td>(4, 8, 4)</td>
+<td>(128, 1, 16)</td>
+<td>4×8×4 &#x3D; 128</td>
+</tr>
+<tr>
+<td><strong>Val</strong></td>
+<td>(2, 2, 2)</td>
+<td>(64, 8, 512)</td>
+<td>2×2×2 &#x3D; 8</td>
+</tr>
+</tbody></table>
+<p><strong>总元素数</strong>: 128 线程 × 8 值&#x2F;线程 &#x3D; 1024 &#x3D; 64 × 16 ✓</p>
+<h3 id="4-2-坐标展开公式"><a href="#4-2-坐标展开公式" class="headerlink" title="4.2 坐标展开公式"></a>4.2 坐标展开公式</h3><p><strong>Thread ID → (t₀, t₁, t₂):</strong></p>
+<p>$$<br>t_0 &#x3D; \text{thread_id} \mod 4<br>$$<br>$$<br>t_1 &#x3D; \lfloor \text{thread_id} &#x2F; 4 \rfloor \mod 8<br>$$<br>$$<br>t_2 &#x3D; \lfloor \text{thread_id} &#x2F; 32 \rfloor \mod 4<br>$$</p>
+<p><strong>Value ID → (v₀, v₁, v₂):</strong></p>
+<p>$$<br>v_0 &#x3D; \text{value_id} \mod 2<br>$$<br>$$<br>v_1 &#x3D; \lfloor \text{value_id} &#x2F; 2 \rfloor \mod 2<br>$$<br>$$<br>v_2 &#x3D; \lfloor \text{value_id} &#x2F; 4 \rfloor \mod 2<br>$$</p>
+<h3 id="4-3-映射函数"><a href="#4-3-映射函数" class="headerlink" title="4.3 映射函数"></a>4.3 映射函数</h3><p>$$<br>\text{offset} &#x3D; \underbrace{t_0 \times 128 + t_1 \times 1 + t_2 \times 16}<em>{\text{thr_offset}} + \underbrace{v_0 \times 64 + v_1 \times 8 + v_2 \times 512}</em>{\text{val_offset}}<br>$$</p>
+<h3 id="4-4-Thread-0-的-8-个-Value"><a href="#4-4-Thread-0-的-8-个-Value" class="headerlink" title="4.4 Thread 0 的 8 个 Value"></a>4.4 Thread 0 的 8 个 Value</h3><p>Thread 0: $t_0&#x3D;0, t_1&#x3D;0, t_2&#x3D;0$ → thr_offset &#x3D; 0</p>
+<table>
+<thead>
+<tr>
+<th>v_idx</th>
+<th>(v₀, v₁, v₂)</th>
+<th>val_offset</th>
+<th>offset</th>
+<th>m</th>
+<th>k</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>(0, 0, 0)</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>1</td>
+<td>(1, 0, 0)</td>
+<td>64</td>
+<td>64</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>2</td>
+<td>(0, 1, 0)</td>
+<td>8</td>
+<td>8</td>
+<td>8</td>
+<td>0</td>
+</tr>
+<tr>
+<td>3</td>
+<td>(1, 1, 0)</td>
+<td>72</td>
+<td>72</td>
+<td>8</td>
+<td>1</td>
+</tr>
+<tr>
+<td>4</td>
+<td>(0, 0, 1)</td>
+<td>512</td>
+<td>512</td>
+<td>0</td>
+<td>8</td>
+</tr>
+<tr>
+<td>5</td>
+<td>(1, 0, 1)</td>
+<td>576</td>
+<td>576</td>
+<td>0</td>
+<td>9</td>
+</tr>
+<tr>
+<td>6</td>
+<td>(0, 1, 1)</td>
+<td>520</td>
+<td>520</td>
+<td>8</td>
+<td>8</td>
+</tr>
+<tr>
+<td>7</td>
+<td>(1, 1, 1)</td>
+<td>584</td>
+<td>584</td>
+<td>8</td>
+<td>9</td>
+</tr>
+</tbody></table>
+<p><em>坐标转换: m &#x3D; offset % 64, k &#x3D; offset &#x2F; 64</em></p>
+<h3 id="4-5-Thread-0-在-64×16-矩阵中的位置"><a href="#4-5-Thread-0-在-64×16-矩阵中的位置" class="headerlink" title="4.5 Thread 0 在 64×16 矩阵中的位置"></a>4.5 Thread 0 在 64×16 矩阵中的位置</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">64x16 matrix (Thread 0&#x27;s 8 positions marked with *):</span><br><span class="line"></span><br><span class="line">           k=0       k=1                   k=8       k=9</span><br><span class="line">          +---------+---------+           +---------+---------+</span><br><span class="line">     m=0  | V0  *   | V1  *   |    ...    | V4  *   | V5  *   |</span><br><span class="line">          | off=0   | off=64  |           | off=512 | off=576 |</span><br><span class="line">          +---------+---------+           +---------+---------+</span><br><span class="line">     m=1  |         |         |           |         |         |</span><br><span class="line">          +---------+---------+           +---------+---------+</span><br><span class="line">     ...  |         |         |           |         |         |</span><br><span class="line">          +---------+---------+           +---------+---------+</span><br><span class="line">     m=8  | V2  *   | V3  *   |    ...    | V6  *   | V7  *   |</span><br><span class="line">          | off=8   | off=72  |           | off=520 | off=584 |</span><br><span class="line">          +---------+---------+           +---------+---------+</span><br><span class="line">     ...  |         |         |           |         |         |</span><br><span class="line">          +---------+---------+           +---------+---------+</span><br><span class="line"></span><br><span class="line">Thread 0 owns:</span><br><span class="line">  - 4 positions at row m=0: (0,0), (0,1), (0,8), (0,9)</span><br><span class="line">  - 4 positions at row m=8: (8,0), (8,1), (8,8), (8,9)</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-6-Thread-1-的-8-个-Value"><a href="#4-6-Thread-1-的-8-个-Value" class="headerlink" title="4.6 Thread 1 的 8 个 Value"></a>4.6 Thread 1 的 8 个 Value</h3><p>Thread 1: $t_0&#x3D;1, t_1&#x3D;0, t_2&#x3D;0$ → thr_offset &#x3D; 1×128 &#x3D; 128</p>
+<table>
+<thead>
+<tr>
+<th>v_idx</th>
+<th>val_offset</th>
+<th>offset</th>
+<th>m</th>
+<th>k</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>0</td>
+<td>128</td>
+<td>0</td>
+<td>2</td>
+</tr>
+<tr>
+<td>1</td>
+<td>64</td>
+<td>192</td>
+<td>0</td>
+<td>3</td>
+</tr>
+<tr>
+<td>2</td>
+<td>8</td>
+<td>136</td>
+<td>8</td>
+<td>2</td>
+</tr>
+<tr>
+<td>3</td>
+<td>72</td>
+<td>200</td>
+<td>8</td>
+<td>3</td>
+</tr>
+<tr>
+<td>4</td>
+<td>512</td>
+<td>640</td>
+<td>0</td>
+<td>10</td>
+</tr>
+<tr>
+<td>5</td>
+<td>576</td>
+<td>704</td>
+<td>0</td>
+<td>11</td>
+</tr>
+<tr>
+<td>6</td>
+<td>520</td>
+<td>648</td>
+<td>8</td>
+<td>10</td>
+</tr>
+<tr>
+<td>7</td>
+<td>584</td>
+<td>712</td>
+<td>8</td>
+<td>11</td>
+</tr>
+</tbody></table>
+<h3 id="4-7-完整线程分布图"><a href="#4-7-完整线程分布图" class="headerlink" title="4.7 完整线程分布图"></a>4.7 完整线程分布图</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">64x16 matrix (showing which Thread owns each position):</span><br><span class="line"></span><br><span class="line">        k: 0    1  | 2    3  | 4    5  | 6    7  || 8    9  |10   11  |12   13  |14   15</span><br><span class="line">       +---------+---------+---------+---------++---------+---------+---------+---------+</span><br><span class="line">  m=0  | T0   T0 | T1   T1 | T2   T2 | T3   T3 || T0   T0 | T1   T1 | T2   T2 | T3   T3 |</span><br><span class="line">       +---------+---------+---------+---------++---------+---------+---------+---------+</span><br><span class="line">  m=1  | T4   T4 | T5   T5 | T6   T6 | T7   T7 || T4   T4 | T5   T5 | T6   T6 | T7   T7 |</span><br><span class="line">       +---------+---------+---------+---------++---------+---------+---------+---------+</span><br><span class="line">  ...  |   ...   |   ...   |   ...   |   ...   ||   ...   |   ...   |   ...   |   ...   |</span><br><span class="line">       +---------+---------+---------+---------++---------+---------+---------+---------+</span><br><span class="line">  m=8  | T0   T0 | T1   T1 | T2   T2 | T3   T3 || T0   T0 | T1   T1 | T2   T2 | T3   T3 |</span><br><span class="line">       +---------+---------+---------+---------++---------+---------+---------+---------+</span><br><span class="line">  m=9  | T4   T4 | T5   T5 | T6   T6 | T7   T7 || T4   T4 | T5   T5 | T6   T6 | T7   T7 |</span><br><span class="line">       +---------+---------+---------+---------++---------+---------+---------+---------+</span><br><span class="line"></span><br><span class="line">Pattern:</span><br><span class="line">  - k direction: T0-T3 alternate, each thread covers 2 columns</span><br><span class="line">  - m direction: same thread repeats every 8 rows</span><br><span class="line">  - each thread&#x27;s 8 values spread across 4 2x2 blocks</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-8-RS-Mode-Data-Flow"><a href="#4-8-RS-Mode-Data-Flow" class="headerlink" title="4.8 RS Mode Data Flow"></a>4.8 RS Mode Data Flow</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|                    RS Mode (ALayout_64x16)                  |</span><br><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|                                                             |</span><br><span class="line">|  GMEM --TMA--&gt; SMEM --ldmatrix--&gt; Register --&gt; WGMMA HW     |</span><br><span class="line">|                          ^            ^                     |</span><br><span class="line">|                    each thread    each thread 8 values      |</span><br><span class="line">|                    loads its 8    stored in register        |</span><br><span class="line">|                          ^                                  |</span><br><span class="line">|                  ALayout_64x16 specifies                    |</span><br><span class="line">|                  which positions each thread owns           |</span><br><span class="line">|                                                             |</span><br><span class="line">|  Feature: data needs to be loaded from SMEM to Register     |</span><br><span class="line">|                                                             |</span><br><span class="line">+-------------------------------------------------------------+</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="5-核心对比"><a href="#5-核心对比" class="headerlink" title="5. 核心对比"></a>5. 核心对比</h2><h3 id="5-1-公式对比"><a href="#5-1-公式对比" class="headerlink" title="5.1 公式对比"></a>5.1 公式对比</h3><table>
+<thead>
+<tr>
+<th>Layout</th>
+<th>映射函数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>ABLayout&lt;64,16&gt;</strong></td>
+<td>$\text{offset} &#x3D; v_m + v_k \times 64$</td>
+</tr>
+<tr>
+<td><strong>ALayout_64x16</strong></td>
+<td>$\text{offset} &#x3D; (t_0 \times 128 + t_1 + t_2 \times 16) + (v_0 \times 64 + v_1 \times 8 + v_2 \times 512)$</td>
+</tr>
+</tbody></table>
+<h3 id="5-2-Thr-Stride-对比"><a href="#5-2-Thr-Stride-对比" class="headerlink" title="5.2 Thr Stride 对比"></a>5.2 Thr Stride 对比</h3><table>
+<thead>
+<tr>
+<th>Layout</th>
+<th>Thr Stride</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>ABLayout</strong></td>
+<td><strong>0</strong></td>
+<td>所有线程共享相同数据</td>
+</tr>
+<tr>
+<td><strong>ALayout_64x16</strong></td>
+<td>(128, 1, 16) ≠ 0</td>
+<td>每线程负责不同位置</td>
+</tr>
+</tbody></table>
+<h3 id="5-3-数据位置对比"><a href="#5-3-数据位置对比" class="headerlink" title="5.3 数据位置对比"></a>5.3 数据位置对比</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|                    ABLayout (SS)                            |</span><br><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|                                                             |</span><br><span class="line">|  Thread 0   --&gt; SMEM descriptor --&gt; access entire 64x16     |</span><br><span class="line">|  Thread 1   --&gt; SMEM descriptor --&gt; access entire 64x16     |</span><br><span class="line">|  Thread 2   --&gt; SMEM descriptor --&gt; access entire 64x16     |</span><br><span class="line">|  ...                                                        |</span><br><span class="line">|  Thread 127 --&gt; SMEM descriptor --&gt; access entire 64x16     |</span><br><span class="line">|                                                             |</span><br><span class="line">|  Data location: SMEM (no movement)                          |</span><br><span class="line">|  Engine: smem_desc&lt;T&gt; (64-bit descriptor)                   |</span><br><span class="line">|                                                             |</span><br><span class="line">+-------------------------------------------------------------+</span><br><span class="line"></span><br><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|                  ALayout_64x16 (RS)                         |</span><br><span class="line">+-------------------------------------------------------------+</span><br><span class="line">|                                                             |</span><br><span class="line">|  Thread 0   --&gt; Register[0..7] --&gt; pos (0,0)(0,1)(8,0)...   |</span><br><span class="line">|  Thread 1   --&gt; Register[0..7] --&gt; pos (0,2)(0,3)(8,2)...   |</span><br><span class="line">|  Thread 2   --&gt; Register[0..7] --&gt; pos (0,4)(0,5)(8,4)...   |</span><br><span class="line">|  ...                                                        |</span><br><span class="line">|  Thread 127 --&gt; Register[0..7] --&gt; different 8 positions    |</span><br><span class="line">|                                                             |</span><br><span class="line">|  Data location: Register (needs SMEM load)                  |</span><br><span class="line">|  Engine: ArrayEngine&lt;uint32_t, 4&gt;                           |</span><br><span class="line">|                                                             |</span><br><span class="line">+-------------------------------------------------------------+</span><br></pre></td></tr></table></figure>
+
+<h3 id="5-4-Summary-Diagram"><a href="#5-4-Summary-Diagram" class="headerlink" title="5.4 Summary Diagram"></a>5.4 Summary Diagram</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">                   ABLayout (SS)                    ALayout_64x16 (RS)</span><br><span class="line">                  +-------------+                   +-------------+</span><br><span class="line">                  |             |                   |             |</span><br><span class="line">Thr Stride        |      0      |                   |    != 0     |</span><br><span class="line">                  |             |                   |             |</span><br><span class="line">                  +------+------+                   +------+------+</span><br><span class="line">                         |                                 |</span><br><span class="line">                         v                                 v</span><br><span class="line">                +----------------+               +----------------+</span><br><span class="line">Thread View     | all threads    |               | each thread    |</span><br><span class="line">                | see same off   |               | sees diff off  |</span><br><span class="line">                +-------+--------+               +-------+--------+</span><br><span class="line">                         |                                 |</span><br><span class="line">                         v                                 v</span><br><span class="line">                +----------------+               +----------------+</span><br><span class="line">Data Location   |     SMEM       |               |    Register    |</span><br><span class="line">                |  (descriptor)  |               | (per-thread)   |</span><br><span class="line">                +-------+--------+               +-------+--------+</span><br><span class="line">                         |                                 |</span><br><span class="line">                         v                                 v</span><br><span class="line">                +----------------+               +----------------+</span><br><span class="line">Engine          |  smem_desc&lt;T&gt;  |               | ArrayEngine    |</span><br><span class="line">                |   (64-bit)     |               |  &lt;T, 8&gt;        |</span><br><span class="line">                +----------------+               +----------------+</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="6-为什么需要两种模式？"><a href="#6-为什么需要两种模式？" class="headerlink" title="6. 为什么需要两种模式？"></a>6. 为什么需要两种模式？</h2><h3 id="6-1-SS-模式的优势"><a href="#6-1-SS-模式的优势" class="headerlink" title="6.1 SS 模式的优势"></a>6.1 SS 模式的优势</h3><ul>
+<li><strong>简单</strong>: 数据不移动，硬件直接读 SMEM</li>
+<li><strong>省寄存器</strong>: 不需要额外寄存器存储 A 矩阵</li>
+<li><strong>适合大矩阵</strong>: SMEM 容量大</li>
+</ul>
+<h3 id="6-2-RS-模式的优势"><a href="#6-2-RS-模式的优势" class="headerlink" title="6.2 RS 模式的优势"></a>6.2 RS 模式的优势</h3><ul>
+<li><strong>复用寄存器数据</strong>: A 矩阵在 register 中可多次使用</li>
+<li><strong>减少 SMEM 访问</strong>: 一次 load，多次 MMA</li>
+<li><strong>适合 K 维度循环</strong>: 同一份 A 数据参与多个 K 步的计算</li>
+</ul>
+<h3 id="6-3-选择建议"><a href="#6-3-选择建议" class="headerlink" title="6.3 选择建议"></a>6.3 选择建议</h3><table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐模式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A 只用一次</td>
+<td>SS</td>
+</tr>
+<tr>
+<td>A 需要复用</td>
+<td>RS</td>
+</tr>
+<tr>
+<td>寄存器紧张</td>
+<td>SS</td>
+</tr>
+<tr>
+<td>SMEM 带宽瓶颈</td>
+<td>RS</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="7-总结"><a href="#7-总结" class="headerlink" title="7. 总结"></a>7. 总结</h2><table>
+<thead>
+<tr>
+<th>特性</th>
+<th>ABLayout (SS)</th>
+<th>ALayout_64x16 (RS)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Thr Stride</strong></td>
+<td>0</td>
+<td>≠ 0</td>
+</tr>
+<tr>
+<td><strong>线程数据</strong></td>
+<td>所有线程共享</td>
+<td>每线程独立 8 个值</td>
+</tr>
+<tr>
+<td><strong>数据位置</strong></td>
+<td>SMEM</td>
+<td>Register</td>
+</tr>
+<tr>
+<td><strong>Engine 类型</strong></td>
+<td>smem_desc</td>
+<td>ArrayEngine</td>
+</tr>
+<tr>
+<td><strong>数据移动</strong></td>
+<td>无</td>
+<td>SMEM → Register</td>
+</tr>
+<tr>
+<td><strong>映射函数</strong></td>
+<td>offset &#x3D; m + k×M</td>
+<td>复杂多维映射</td>
+</tr>
+</tbody></table>
+<p><strong>核心理解：</strong></p>
+<ul>
+<li><code>ABLayout</code> 的 <strong>Thr Stride &#x3D; 0</strong> 意味着所有线程共享同一块 SMEM，是 WGMMA SS 模式的布局描述</li>
+<li><code>ALayout_64x16</code> 的 <strong>Thr Stride ≠ 0</strong> 意味着每个线程负责矩阵的不同位置，需要从 SMEM load 到 Register，是 WGMMA RS 模式的布局描述</li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>0x03 ABLayout vs ALayout_64x16 - SS and RS Mode TV Layout</p><p><a href="https://drxuqian.github.io/2024/12/24/0x03-ablayout-vs-alayout/">https://drxuqian.github.io/2024/12/24/0x03-ablayout-vs-alayout/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>DrXuQian</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2024-12-24</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2025-12-24</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/layout/">layout</a><a class="link-muted mr-2" rel="tag" href="/tags/wgmma/">wgmma</a><a class="link-muted mr-2" rel="tag" href="/tags/ss-mode/">ss-mode</a><a class="link-muted mr-2" rel="tag" href="/tags/rs-mode/">rs-mode</a><a class="link-muted mr-2" rel="tag" href="/tags/tv-layout/">tv-layout</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/2024/12/24/0x02-elect-one-sync/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">0x02 elect_one_sync and Warp-Level Leader Election</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/2024/12/24/0x09-cooperative-kernel-pipeline/"><span class="level-item">0x09 CUTLASS SM90 Cooperative Kernel Pipeline</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1 is-sticky"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.jpg" alt="DrXuQian"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">DrXuQian</p><p class="is-size-6 is-block">CUDA/GPU Enthusiast</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>China</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">15</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">7</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">33</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/DrXuQian" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></div></div></div><!--!--><div class="column-right-shadow is-hidden-widescreen is-sticky"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3 is-sticky"><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/CUDA/"><span class="level-start"><span class="level-item">CUDA</span></span><span class="level-end"><span class="level-item tag">3</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/CuTe/"><span class="level-start"><span class="level-item">CuTe</span></span><span class="level-end"><span class="level-item tag">2</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/CuTe/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></li><li><a class="level is-mobile" href="/categories/CUDA/PTX/"><span class="level-start"><span class="level-item">PTX</span></span><span class="level-end"><span class="level-item tag">1</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/PTX/Hopper/"><span class="level-start"><span class="level-item">Hopper</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></li></ul></li><li><a class="level is-mobile" href="/categories/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/GPU-Computing/"><span class="level-start"><span class="level-item">GPU Computing</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T08:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x0A-gemm-loop-hierarchy/">0x0A CUTLASS SM90 GEMM Loop Hierarchy</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T04:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x08-tensor-engine-types/">0x08 CuTe Tensor Engine Types</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T03:30:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x07-ss-op-selector/">0x07 CUTLASS ss_op_selector MMA Atom Selection</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T03:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x06-mma-unpack/">0x06 CUTLASS mma_unpack Deep Dive</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T02:30:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x05-make-tiled-mma/">0x05 CUTLASS make_tiled_mma and MMA_Atom</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2024/12/"><span class="level-start"><span class="level-item">十二月 2024</span></span><span class="level-end"><span class="level-item tag">15</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/CUTLASS/"><span class="tag">CUTLASS</span><span class="tag">12</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SM90/"><span class="tag">SM90</span><span class="tag">9</span></a></div><div class="control"><a class="tags has-addons" href="/tags/CuTe/"><span class="tag">CuTe</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GMMA/"><span class="tag">GMMA</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pipeline/"><span class="tag">Pipeline</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mbarrier/"><span class="tag">mbarrier</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PTX/"><span class="tag">PTX</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TMA/"><span class="tag">TMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/layout/"><span class="tag">layout</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TiledMMA/"><span class="tag">TiledMMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Warp-Specialization/"><span class="tag">Warp Specialization</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Multicast/"><span class="tag">Multicast</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cluster/"><span class="tag">Cluster</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/thread/"><span class="tag">thread</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/value/"><span class="tag">value</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mma/"><span class="tag">mma</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/elect/"><span class="tag">elect</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/warp/"><span class="tag">warp</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/synchronization/"><span class="tag">synchronization</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/leader/"><span class="tag">leader</span><span class="tag">1</span></a></div></div></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a><p class="is-size-7"><span>&copy; 2025 DrXuQian</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a><br><span id="busuanzi_container_site_uv">共<span id="busuanzi_value_site_uv">0</span>个访客</span></p><p class="is-size-7">© 2024 DrXuQian</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><script src="/js/animation.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script type="text/javascript" id="MathJax-script" async>MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+      },
+      svg: {
+        fontCache: 'global'
+      },
+      chtml: {
+        matchFontHeight: false
+      }
+    };</script><script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script><script src="/js/theme-toggle.js"></script></body></html>

@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><title>0x0E CuTe Layout Divide: logical_divide vs zipped_divide - CUTLASS 学习笔记</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0d1117"><meta name="application-name" content="CUTLASS 学习笔记"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="msapplication-TileColor" content="#0d1117"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CUTLASS 学习笔记"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="This article explains CuTe’s layout division operations: logical_divide and zipped_divide. Understanding these operations is essential for working with tiled tensor operations and thread-value layouts"><meta property="og:type" content="blog"><meta property="og:title" content="0x0E CuTe Layout Divide: logical_divide vs zipped_divide"><meta property="og:url" content="https://drxuqian.github.io/2024/12/24/0x0E-cute-layout-divide/"><meta property="og:site_name" content="CUTLASS 学习笔记"><meta property="og:description" content="This article explains CuTe’s layout division operations: logical_divide and zipped_divide. Understanding these operations is essential for working with tiled tensor operations and thread-value layouts"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://drxuqian.github.io/img/og_image.png"><meta property="article:published_time" content="2024-12-23T16:00:00.000Z"><meta property="article:modified_time" content="2025-12-24T14:22:47.005Z"><meta property="article:author" content="DrXuQian"><meta property="article:tag" content="CUTLASS"><meta property="article:tag" content="CuTe"><meta property="article:tag" content="Layout"><meta property="article:tag" content="logical_divide"><meta property="article:tag" content="zipped_divide"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://drxuqian.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://drxuqian.github.io/2024/12/24/0x0E-cute-layout-divide/"},"headline":"0x0E CuTe Layout Divide: logical_divide vs zipped_divide","image":["https://drxuqian.github.io/img/og_image.png"],"datePublished":"2024-12-23T16:00:00.000Z","dateModified":"2025-12-24T14:22:47.005Z","author":{"@type":"Person","name":"DrXuQian"},"publisher":{"@type":"Organization","name":"CUTLASS 学习笔记","logo":{"@type":"ImageObject","url":"https://drxuqian.github.io/img/logo.svg"}},"description":"This article explains CuTe’s layout division operations: logical_divide and zipped_divide. Understanding these operations is essential for working with tiled tensor operations and thread-value layouts"}</script><link rel="canonical" href="https://drxuqian.github.io/2024/12/24/0x0E-cute-layout-divide/"><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link data-pjax rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link data-pjax rel="stylesheet" href="/css/default.css"><style>body>.footer,body>.navbar,body>.section{opacity:0}</style><!--!--><!--!--><!--!--><script src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" defer></script><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.1"><link rel="stylesheet" href="/css/custom.css"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">Home</a><a class="navbar-item" href="/archives">Archives</a><a class="navbar-item" href="/categories">Categories</a><a class="navbar-item" href="/tags">Tags</a><a class="navbar-item" href="/about">About</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2024-12-23T16:00:00.000Z" title="12/24/2024, 12:00:00 AM">2024-12-24</time>发表</span><span class="level-item"><time dateTime="2025-12-24T14:22:47.005Z" title="12/24/2025, 10:22:47 PM">2025-12-24</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/CUTLASS/">CUTLASS</a></span><span class="level-item">4 分钟读完 (大约631个字)</span><span class="level-item" id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv">0</span>次访问</span></div></div><h1 class="title is-3 is-size-4-mobile">0x0E CuTe Layout Divide: logical_divide vs zipped_divide</h1><div class="content"><p>This article explains CuTe’s layout division operations: <code>logical_divide</code> and <code>zipped_divide</code>. Understanding these operations is essential for working with tiled tensor operations and thread-value layouts in CUTLASS.</p>
+<span id="more"></span>
+
+<blockquote>
+<p><strong>Key Points</strong></p>
+<ol>
+<li><strong>logical_divide</strong>: Hierarchically divides layout, keeping original offset mapping</li>
+<li><strong>zipped_divide</strong>: Divides and zips tile dimensions together for easier iteration</li>
+<li><strong>Shape transformation</strong>: Both change shape but differ in stride organization</li>
+<li><strong>Use case</strong>: <code>zipped_divide</code> is commonly used for thread-value decomposition in MMA</li>
+</ol>
+</blockquote>
+<h2 id="1-Original-Layout"><a href="#1-Original-Layout" class="headerlink" title="1. Original Layout"></a>1. Original Layout</h2><p>Let’s start with a simple 8x8 layout:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> layout_2d = <span class="built_in">make_layout</span>(<span class="built_in">make_shape</span>(Int&lt;<span class="number">8</span>&gt;&#123;&#125;, Int&lt;<span class="number">8</span>&gt;&#123;&#125;));</span><br><span class="line"><span class="comment">// Layout: (_8,_8):(_1,_8)</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>Visualization</strong> (click to view PDF): <a href="/assets/cute-layout-divide/step0_original_8x8.pdf">step0_original_8x8.pdf</a></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">Original 2D layout: (_8,_8):(_1,_8)</span><br><span class="line">       0    1    2    3    4    5    6    7</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 0  |  0 |  8 | 16 | 24 | 32 | 40 | 48 | 56 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 1  |  1 |  9 | 17 | 25 | 33 | 41 | 49 | 57 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 2  |  2 | 10 | 18 | 26 | 34 | 42 | 50 | 58 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 3  |  3 | 11 | 19 | 27 | 35 | 43 | 51 | 59 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 4  |  4 | 12 | 20 | 28 | 36 | 44 | 52 | 60 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 5  |  5 | 13 | 21 | 29 | 37 | 45 | 53 | 61 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 6  |  6 | 14 | 22 | 30 | 38 | 46 | 54 | 62 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 7  |  7 | 15 | 23 | 31 | 39 | 47 | 55 | 63 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br></pre></td></tr></table></figure>
+
+<p>The offset formula is: <code>offset = m * 1 + n * 8</code></p>
+<h2 id="2-Tile-Definition"><a href="#2-Tile-Definition" class="headerlink" title="2. Tile Definition"></a>2. Tile Definition</h2><p>We define a tile to divide the layout:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> tile_2d = <span class="built_in">make_tile</span>(<span class="built_in">make_layout</span>(Int&lt;<span class="number">4</span>&gt;&#123;&#125;),   <span class="comment">// M: groups of 4</span></span><br><span class="line">                         <span class="built_in">make_layout</span>(Int&lt;<span class="number">2</span>&gt;&#123;&#125;));  <span class="comment">// N: groups of 2</span></span><br><span class="line"><span class="comment">// Tile: (_4:_1, _2:_1)</span></span><br></pre></td></tr></table></figure>
+
+<p>This means:</p>
+<ul>
+<li>Divide M dimension into groups of 4 rows</li>
+<li>Divide N dimension into groups of 2 columns</li>
+<li>Result: 2x4 &#x3D; 8 tiles covering the 8x8 matrix</li>
+</ul>
+<h2 id="3-logical-divide"><a href="#3-logical-divide" class="headerlink" title="3. logical_divide"></a>3. logical_divide</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> divided_2d = <span class="built_in">logical_divide</span>(layout_2d, tile_2d);</span><br><span class="line"><span class="comment">// Result: ((_4,_2),(_2,_4)):((_1,_4),(_8,_16))</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>Visualization</strong>: <a href="/assets/cute-layout-divide/step1_logical_divide.pdf">step1_logical_divide.pdf</a></p>
+<h3 id="Shape-Analysis"><a href="#Shape-Analysis" class="headerlink" title="Shape Analysis"></a>Shape Analysis</h3><table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>(_4,_2)</code></td>
+<td>First dim: 4 rows per tile, 2 tile rows</td>
+</tr>
+<tr>
+<td><code>(_2,_4)</code></td>
+<td>Second dim: 2 cols per tile, 4 tile cols</td>
+</tr>
+</tbody></table>
+<h3 id="Stride-Analysis"><a href="#Stride-Analysis" class="headerlink" title="Stride Analysis"></a>Stride Analysis</h3><table>
+<thead>
+<tr>
+<th>Stride</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>_1</code></td>
+<td>Adjacent rows within tile (original M stride)</td>
+</tr>
+<tr>
+<td><code>_4</code></td>
+<td>Jump between tile rows (4 rows apart)</td>
+</tr>
+<tr>
+<td><code>_8</code></td>
+<td>Adjacent columns within tile (original N stride)</td>
+</tr>
+<tr>
+<td><code>_16</code></td>
+<td>Jump between tile columns (2 cols * 8 stride)</td>
+</tr>
+</tbody></table>
+<h3 id="Key-Property-Original-Offset-Preserved"><a href="#Key-Property-Original-Offset-Preserved" class="headerlink" title="Key Property: Original Offset Preserved"></a>Key Property: Original Offset Preserved</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">After logical_divide: ((_4,_2),(_2,_4)):((_1,_4),(_8,_16))</span><br><span class="line">       0    1    2    3    4    5    6    7</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 0  |  0 |  8 | 16 | 24 | 32 | 40 | 48 | 56 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 1  |  1 |  9 | 17 | 25 | 33 | 41 | 49 | 57 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> ...</span><br></pre></td></tr></table></figure>
+
+<p>The offset mapping is <strong>identical</strong> to the original layout! <code>logical_divide</code> only restructures the logical view, not the physical layout.</p>
+<h2 id="4-zipped-divide"><a href="#4-zipped-divide" class="headerlink" title="4. zipped_divide"></a>4. zipped_divide</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> zipped = <span class="built_in">zipped_divide</span>(layout_2d, tile_2d);</span><br><span class="line"><span class="comment">// Result: ((_4,_2),(_2,_4)):((_1,_8),(_4,_16))</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>Visualization</strong>: <a href="/assets/cute-layout-divide/step2_zipped_divide.pdf">step2_zipped_divide.pdf</a></p>
+<h3 id="Different-Stride-Organization"><a href="#Different-Stride-Organization" class="headerlink" title="Different Stride Organization"></a>Different Stride Organization</h3><p>Compare the strides:</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Shape</th>
+<th>Stride</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>logical_divide</td>
+<td><code>((_4,_2),(_2,_4))</code></td>
+<td><code>((_1,_4),(_8,_16))</code></td>
+</tr>
+<tr>
+<td>zipped_divide</td>
+<td><code>((_4,_2),(_2,_4))</code></td>
+<td><code>((_1,_8),(_4,_16))</code></td>
+</tr>
+</tbody></table>
+<p>Notice: <code>zipped_divide</code> <strong>zips</strong> the inner tile dimensions together!</p>
+<h3 id="Offset-Mapping-Changes"><a href="#Offset-Mapping-Changes" class="headerlink" title="Offset Mapping Changes"></a>Offset Mapping Changes</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">After zipped_divide: ((_4,_2),(_2,_4)):((_1,_8),(_4,_16))</span><br><span class="line">       0    1    2    3    4    5    6    7</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 0  |  0 |  4 | 16 | 20 | 32 | 36 | 48 | 52 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 1  |  1 |  5 | 17 | 21 | 33 | 37 | 49 | 53 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 2  |  2 |  6 | 18 | 22 | 34 | 38 | 50 | 54 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 3  |  3 |  7 | 19 | 23 | 35 | 39 | 51 | 55 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 4  |  8 | 12 | 24 | 28 | 40 | 44 | 56 | 60 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 5  |  9 | 13 | 25 | 29 | 41 | 45 | 57 | 61 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 6  | 10 | 14 | 26 | 30 | 42 | 46 | 58 | 62 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br><span class="line"> 7  | 11 | 15 | 27 | 31 | 43 | 47 | 59 | 63 |</span><br><span class="line">    +----+----+----+----+----+----+----+----+</span><br></pre></td></tr></table></figure>
+
+<p>The offsets are now <strong>reordered</strong> - elements within each tile are now contiguous!</p>
+<h2 id="5-Understanding-the-Difference"><a href="#5-Understanding-the-Difference" class="headerlink" title="5. Understanding the Difference"></a>5. Understanding the Difference</h2><h3 id="Visual-Comparison"><a href="#Visual-Comparison" class="headerlink" title="Visual Comparison"></a>Visual Comparison</h3><p><strong>logical_divide</strong> - Hierarchical grouping:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">First 4x2 tile:     Second 4x2 tile (offset by 16):</span><br><span class="line">[0, 8]              [16, 24]</span><br><span class="line">[1, 9]              [17, 25]</span><br><span class="line">[2, 10]             [18, 26]</span><br><span class="line">[3, 11]             [19, 27]</span><br></pre></td></tr></table></figure>
+
+<p><strong>zipped_divide</strong> - Contiguous tiles:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">First 4x2 tile:     Second 4x2 tile (offset by 16):</span><br><span class="line">[0, 4]              [16, 20]</span><br><span class="line">[1, 5]              [17, 21]</span><br><span class="line">[2, 6]              [18, 22]</span><br><span class="line">[3, 7]              [19, 23]</span><br></pre></td></tr></table></figure>
+
+<h3 id="Mathematical-Interpretation"><a href="#Mathematical-Interpretation" class="headerlink" title="Mathematical Interpretation"></a>Mathematical Interpretation</h3><p>For coordinate <code>(m, n)</code> with tile size <code>(TileM, TileN)</code>:</p>
+<p><strong>logical_divide</strong>:</p>
+<ul>
+<li>Inner coord: <code>(m % TileM, n % TileN)</code></li>
+<li>Outer coord (tile index): <code>(m / TileM, n / TileN)</code></li>
+<li>Offset uses original strides</li>
+</ul>
+<p><strong>zipped_divide</strong>:</p>
+<ul>
+<li>Same hierarchical decomposition</li>
+<li>But strides are adjusted so each tile’s elements are contiguous</li>
+<li>Tile index effectively becomes the major index</li>
+</ul>
+<h2 id="6-When-to-Use-Which"><a href="#6-When-to-Use-Which" class="headerlink" title="6. When to Use Which"></a>6. When to Use Which</h2><table>
+<thead>
+<tr>
+<th>Use Case</th>
+<th>Recommended</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Preserving memory access pattern</td>
+<td><code>logical_divide</code></td>
+</tr>
+<tr>
+<td>Thread-Value decomposition</td>
+<td><code>zipped_divide</code></td>
+</tr>
+<tr>
+<td>Tiled iteration with contiguous tiles</td>
+<td><code>zipped_divide</code></td>
+</tr>
+<tr>
+<td>Hierarchical view without data movement</td>
+<td><code>logical_divide</code></td>
+</tr>
+</tbody></table>
+<p>In CUTLASS, <code>zipped_divide</code> is heavily used for:</p>
+<ol>
+<li>Converting tensor layouts to Thread-Value (TV) format</li>
+<li>Creating fragment views for MMA operations</li>
+<li>Iterating over tiles in a regular pattern</li>
+</ol>
+<h2 id="7-Example-Code"><a href="#7-Example-Code" class="headerlink" title="7. Example Code"></a>7. Example Code</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;cute/tensor.hpp&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;cute/layout.hpp&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> cute;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// Original 8x8 layout</span></span><br><span class="line">    <span class="keyword">auto</span> layout_2d = <span class="built_in">make_layout</span>(<span class="built_in">make_shape</span>(Int&lt;<span class="number">8</span>&gt;&#123;&#125;, Int&lt;<span class="number">8</span>&gt;&#123;&#125;));</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Tile: 4x2</span></span><br><span class="line">    <span class="keyword">auto</span> tile_2d = <span class="built_in">make_tile</span>(<span class="built_in">make_layout</span>(Int&lt;<span class="number">4</span>&gt;&#123;&#125;),</span><br><span class="line">                             <span class="built_in">make_layout</span>(Int&lt;<span class="number">2</span>&gt;&#123;&#125;));</span><br><span class="line"></span><br><span class="line">    <span class="comment">// logical_divide - preserves offsets</span></span><br><span class="line">    <span class="keyword">auto</span> divided = <span class="built_in">logical_divide</span>(layout_2d, tile_2d);</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;logical_divide: &quot;</span>); <span class="built_in">print</span>(divided); <span class="built_in">print</span>(<span class="string">&quot;\n&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// zipped_divide - contiguous tiles</span></span><br><span class="line">    <span class="keyword">auto</span> zipped = <span class="built_in">zipped_divide</span>(layout_2d, tile_2d);</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;zipped_divide: &quot;</span>); <span class="built_in">print</span>(zipped); <span class="built_in">print</span>(<span class="string">&quot;\n&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="8-Summary"><a href="#8-Summary" class="headerlink" title="8. Summary"></a>8. Summary</h2><table>
+<thead>
+<tr>
+<th>Property</th>
+<th>logical_divide</th>
+<th>zipped_divide</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Shape</td>
+<td>Same</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Stride</td>
+<td>Hierarchical (original)</td>
+<td>Zipped (reordered)</td>
+</tr>
+<tr>
+<td>Offset mapping</td>
+<td>Preserved</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>Use case</td>
+<td>View transformation</td>
+<td>Tile iteration</td>
+</tr>
+</tbody></table>
+<p>Both operations are fundamental to CuTe’s layout algebra and enable efficient tiled tensor operations. Understanding their differences is key to mastering CUTLASS’s tensor abstractions.</p>
+<h2 id="References"><a href="#References" class="headerlink" title="References"></a>References</h2><ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/NVIDIA/cutlass/tree/main/media/docs/cute">CUTLASS CuTe Documentation</a></li>
+<li>Source: <code>cute-examples/logical_divide.cu</code></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>0x0E CuTe Layout Divide: logical_divide vs zipped_divide</p><p><a href="https://drxuqian.github.io/2024/12/24/0x0E-cute-layout-divide/">https://drxuqian.github.io/2024/12/24/0x0E-cute-layout-divide/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>DrXuQian</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2024-12-24</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2025-12-24</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/CUTLASS/">CUTLASS</a><a class="link-muted mr-2" rel="tag" href="/tags/CuTe/">CuTe</a><a class="link-muted mr-2" rel="tag" href="/tags/Layout/">Layout</a><a class="link-muted mr-2" rel="tag" href="/tags/logical-divide/">logical_divide</a><a class="link-muted mr-2" rel="tag" href="/tags/zipped-divide/">zipped_divide</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/2024/12/24/0x0C-tma-descriptor/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">0x0C CUTLASS SM90 TMA Descriptor Deep Dive</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/2024/12/24/0x0D-tma-multicast/"><span class="level-item">0x0D CUTLASS SM90 TMA Multicast Deep Dive</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1 is-sticky"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.jpg" alt="DrXuQian"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">DrXuQian</p><p class="is-size-6 is-block">CUDA/GPU Enthusiast</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>China</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">15</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">7</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">33</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/DrXuQian" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></div></div></div><!--!--><div class="column-right-shadow is-hidden-widescreen is-sticky"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3 is-sticky"><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/CUDA/"><span class="level-start"><span class="level-item">CUDA</span></span><span class="level-end"><span class="level-item tag">3</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/CuTe/"><span class="level-start"><span class="level-item">CuTe</span></span><span class="level-end"><span class="level-item tag">2</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/CuTe/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></li><li><a class="level is-mobile" href="/categories/CUDA/PTX/"><span class="level-start"><span class="level-item">PTX</span></span><span class="level-end"><span class="level-item tag">1</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/PTX/Hopper/"><span class="level-start"><span class="level-item">Hopper</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></li></ul></li><li><a class="level is-mobile" href="/categories/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/GPU-Computing/"><span class="level-start"><span class="level-item">GPU Computing</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T08:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x0A-gemm-loop-hierarchy/">0x0A CUTLASS SM90 GEMM Loop Hierarchy</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T04:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x08-tensor-engine-types/">0x08 CuTe Tensor Engine Types</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T03:30:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x07-ss-op-selector/">0x07 CUTLASS ss_op_selector MMA Atom Selection</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T03:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x06-mma-unpack/">0x06 CUTLASS mma_unpack Deep Dive</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T02:30:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x05-make-tiled-mma/">0x05 CUTLASS make_tiled_mma and MMA_Atom</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2024/12/"><span class="level-start"><span class="level-item">十二月 2024</span></span><span class="level-end"><span class="level-item tag">15</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/CUTLASS/"><span class="tag">CUTLASS</span><span class="tag">12</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SM90/"><span class="tag">SM90</span><span class="tag">9</span></a></div><div class="control"><a class="tags has-addons" href="/tags/CuTe/"><span class="tag">CuTe</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GMMA/"><span class="tag">GMMA</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pipeline/"><span class="tag">Pipeline</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mbarrier/"><span class="tag">mbarrier</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PTX/"><span class="tag">PTX</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TMA/"><span class="tag">TMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/layout/"><span class="tag">layout</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TiledMMA/"><span class="tag">TiledMMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Warp-Specialization/"><span class="tag">Warp Specialization</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Multicast/"><span class="tag">Multicast</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cluster/"><span class="tag">Cluster</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/thread/"><span class="tag">thread</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/value/"><span class="tag">value</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mma/"><span class="tag">mma</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/elect/"><span class="tag">elect</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/warp/"><span class="tag">warp</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/synchronization/"><span class="tag">synchronization</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/leader/"><span class="tag">leader</span><span class="tag">1</span></a></div></div></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a><p class="is-size-7"><span>&copy; 2025 DrXuQian</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a><br><span id="busuanzi_container_site_uv">共<span id="busuanzi_value_site_uv">0</span>个访客</span></p><p class="is-size-7">© 2024 DrXuQian</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><script src="/js/animation.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script type="text/javascript" id="MathJax-script" async>MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+      },
+      svg: {
+        fontCache: 'global'
+      },
+      chtml: {
+        matchFontHeight: false
+      }
+    };</script><script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script><script src="/js/theme-toggle.js"></script></body></html>

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><title>0x0F CuTe thrfrg_C: Thread Fragmentation for C Tensor - CUTLASS 学习笔记</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0d1117"><meta name="application-name" content="CUTLASS 学习笔记"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="msapplication-TileColor" content="#0d1117"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CUTLASS 学习笔记"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="This article provides a step-by-step analysis of thrfrg_C, the thread fragmentation function for the C (accumulator) tensor in CUTLASS’s TiledMMA. Understanding this is essential for comprehending how"><meta property="og:type" content="blog"><meta property="og:title" content="0x0F CuTe thrfrg_C: Thread Fragmentation for C Tensor"><meta property="og:url" content="https://drxuqian.github.io/2024/12/24/0x0F-thrfrg-c-analysis/"><meta property="og:site_name" content="CUTLASS 学习笔记"><meta property="og:description" content="This article provides a step-by-step analysis of thrfrg_C, the thread fragmentation function for the C (accumulator) tensor in CUTLASS’s TiledMMA. Understanding this is essential for comprehending how"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://drxuqian.github.io/img/og_image.png"><meta property="article:published_time" content="2024-12-23T16:00:00.000Z"><meta property="article:modified_time" content="2025-12-24T14:24:09.198Z"><meta property="article:author" content="DrXuQian"><meta property="article:tag" content="CUTLASS"><meta property="article:tag" content="CuTe"><meta property="article:tag" content="TiledMMA"><meta property="article:tag" content="thrfrg_C"><meta property="article:tag" content="Thread-Value Layout"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://drxuqian.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://drxuqian.github.io/2024/12/24/0x0F-thrfrg-c-analysis/"},"headline":"0x0F CuTe thrfrg_C: Thread Fragmentation for C Tensor","image":["https://drxuqian.github.io/img/og_image.png"],"datePublished":"2024-12-23T16:00:00.000Z","dateModified":"2025-12-24T14:24:09.198Z","author":{"@type":"Person","name":"DrXuQian"},"publisher":{"@type":"Organization","name":"CUTLASS 学习笔记","logo":{"@type":"ImageObject","url":"https://drxuqian.github.io/img/logo.svg"}},"description":"This article provides a step-by-step analysis of thrfrg_C, the thread fragmentation function for the C (accumulator) tensor in CUTLASS’s TiledMMA. Understanding this is essential for comprehending how"}</script><link rel="canonical" href="https://drxuqian.github.io/2024/12/24/0x0F-thrfrg-c-analysis/"><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link data-pjax rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link data-pjax rel="stylesheet" href="/css/default.css"><style>body>.footer,body>.navbar,body>.section{opacity:0}</style><!--!--><!--!--><!--!--><script src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" defer></script><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.1"><link rel="stylesheet" href="/css/custom.css"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">Home</a><a class="navbar-item" href="/archives">Archives</a><a class="navbar-item" href="/categories">Categories</a><a class="navbar-item" href="/tags">Tags</a><a class="navbar-item" href="/about">About</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2024-12-23T16:00:00.000Z" title="12/24/2024, 12:00:00 AM">2024-12-24</time>发表</span><span class="level-item"><time dateTime="2025-12-24T14:24:09.198Z" title="12/24/2025, 10:24:09 PM">2025-12-24</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/CUTLASS/">CUTLASS</a></span><span class="level-item">6 分钟读完 (大约902个字)</span><span class="level-item" id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv">0</span>次访问</span></div></div><h1 class="title is-3 is-size-4-mobile">0x0F CuTe thrfrg_C: Thread Fragmentation for C Tensor</h1><div class="content"><p>This article provides a step-by-step analysis of <code>thrfrg_C</code>, the thread fragmentation function for the C (accumulator) tensor in CUTLASS’s TiledMMA. Understanding this is essential for comprehending how WGMMA operations partition output matrices across threads.</p>
+<span id="more"></span>
+
+<blockquote>
+<p><strong>Key Points</strong></p>
+<ol>
+<li><strong>thrfrg_C</strong> transforms tensor → thread-indexed fragment view</li>
+<li><strong>CLayout_64x16</strong>: 128 threads × 8 values &#x3D; 1024 elements (64×16 Atom)</li>
+<li><strong>zipped_divide + compose</strong>: Core layout transformation operations</li>
+<li><strong>AtomLayoutMNK</strong>: Enables cooperative tiling across warpgroups</li>
+<li><strong>Final shape</strong>: <code>((ThrV, (ThrM, ThrN)), (FrgV, (RestM, RestN)))</code></li>
+</ol>
+</blockquote>
+<h2 id="1-Configuration"><a href="#1-Configuration" class="headerlink" title="1. Configuration"></a>1. Configuration</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Single Atom size: 64 rows × 16 columns</span></span><br><span class="line"><span class="keyword">using</span> AtomShapeM = Int&lt;<span class="number">64</span>&gt;;</span><br><span class="line"><span class="keyword">using</span> AtomShapeN = Int&lt;<span class="number">16</span>&gt;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Cooperative tiling: 2 Atoms in M direction</span></span><br><span class="line"><span class="keyword">using</span> AtomLayoutMNK = Layout&lt;Shape&lt;_2, _1, _1&gt;&gt;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Thread-Value layout for single Atom (128 threads × 8 values)</span></span><br><span class="line"><span class="keyword">using</span> AtomLayoutC_TV = CLayout_64x16;</span><br></pre></td></tr></table></figure>
+
+<h3 id="CLayout-64x16-Definition"><a href="#CLayout-64x16-Definition" class="headerlink" title="CLayout_64x16 Definition"></a>CLayout_64x16 Definition</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="type">int</span> N&gt;</span><br><span class="line"><span class="keyword">using</span> CLayout_64xN = Layout&lt;</span><br><span class="line">    Shape &lt;Shape &lt;  _4, _8, _4&gt;, Shape &lt; _2, _2, Int&lt;N/<span class="number">8</span>&gt;&gt;&gt;,</span><br><span class="line">    Stride&lt;Stride&lt;_128, _1, _16&gt;, Stride&lt;_64, _8, _512&gt;&gt;&gt;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">using</span> CLayout_64x16 = CLayout_64xN&lt;<span class="number">16</span>&gt;;</span><br><span class="line"><span class="comment">// Shape:  ((_4,_8,_4),(_2,_2,_2))</span></span><br><span class="line"><span class="comment">// Stride: ((_128,_1,_16),(_64,_8,_512))</span></span><br><span class="line"><span class="comment">// = 128 threads × 8 values = 1024 elements</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>Visualization</strong>: <a href="/assets/cute-layout-divide/step3_atom_layout_tv.pdf">step3_atom_layout_tv.pdf</a></p>
+<h2 id="2-Step-0-Original-C-Tensor"><a href="#2-Step-0-Original-C-Tensor" class="headerlink" title="2. Step 0: Original C Tensor"></a>2. Step 0: Original C Tensor</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> ctensor = <span class="built_in">make_layout</span>(<span class="built_in">make_shape</span>(Int&lt;<span class="number">128</span>&gt;&#123;&#125;, Int&lt;<span class="number">128</span>&gt;&#123;&#125;));</span><br><span class="line"><span class="comment">// ctensor: (_128,_128):(_1,_128)</span></span><br><span class="line"><span class="comment">// Total: 16384 elements</span></span><br></pre></td></tr></table></figure>
+
+<p>A 128×128 output matrix in row-major layout.</p>
+<h2 id="3-Step-1-Permutation-Identity"><a href="#3-Step-1-Permutation-Identity" class="headerlink" title="3. Step 1: Permutation (Identity)"></a>3. Step 1: Permutation (Identity)</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> t_tensor = ctensor;</span><br><span class="line"><span class="comment">// No change: (_128,_128):(_1,_128)</span></span><br></pre></td></tr></table></figure>
+
+<p>In this example, no permutation is applied. In general, permutation rearranges tensor dimensions.</p>
+<h2 id="4-Step-2-zipped-divide-by-AtomShape"><a href="#4-Step-2-zipped-divide-by-AtomShape" class="headerlink" title="4. Step 2: zipped_divide by AtomShape"></a>4. Step 2: zipped_divide by AtomShape</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> c_tile = <span class="built_in">make_tile</span>(<span class="built_in">make_layout</span>(AtomShapeM&#123;&#125;),   <span class="comment">// M: 64</span></span><br><span class="line">                        <span class="built_in">make_layout</span>(AtomShapeN&#123;&#125;));  <span class="comment">// N: 16</span></span><br><span class="line"><span class="keyword">auto</span> c_tensor = <span class="built_in">zipped_divide</span>(t_tensor, c_tile);</span><br><span class="line"><span class="comment">// Result: ((_64,_16),(_2,_8)):((_1,_128),(_64,_2048))</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>Visualization</strong>: <a href="/assets/cute-layout-divide/step6_zipped_divide_16x16.pdf">step6_zipped_divide_16x16.pdf</a></p>
+<h3 id="Shape-Decomposition"><a href="#Shape-Decomposition" class="headerlink" title="Shape Decomposition"></a>Shape Decomposition</h3><table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Components</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>First <code>(_64,_16)</code></td>
+<td>Atom interior</td>
+<td>64 rows × 16 cols per Atom</td>
+</tr>
+<tr>
+<td>Second <code>(_2,_8)</code></td>
+<td>Atom indices</td>
+<td>2×8 &#x3D; 16 Atoms total</td>
+</tr>
+</tbody></table>
+<h3 id="Interpretation"><a href="#Interpretation" class="headerlink" title="Interpretation"></a>Interpretation</h3><ul>
+<li>128×128 matrix divided into 64×16 Atoms</li>
+<li>M direction: 128&#x2F;64 &#x3D; 2 Atoms</li>
+<li>N direction: 128&#x2F;16 &#x3D; 8 Atoms</li>
+<li>Each Atom: 1024 elements</li>
+</ul>
+<h2 id="5-Step-3-compose-with-AtomLayoutC-TV"><a href="#5-Step-3-compose-with-AtomLayoutC-TV" class="headerlink" title="5. Step 3: compose with AtomLayoutC_TV"></a>5. Step 3: compose with AtomLayoutC_TV</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> tv_tensor = c_tensor.<span class="built_in">compose</span>(AtomLayoutC_TV&#123;&#125;, _);</span><br><span class="line"><span class="comment">// Result: Complex TV layout with thread and value decomposition</span></span><br></pre></td></tr></table></figure>
+
+<p>This is the critical step! <code>compose</code> replaces the Atom-interior layout with the Thread-Value layout.</p>
+<h3 id="AtomLayoutC-TV-Analysis"><a href="#AtomLayoutC-TV-Analysis" class="headerlink" title="AtomLayoutC_TV Analysis"></a>AtomLayoutC_TV Analysis</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">AtomLayoutC_TV: ((_4,_8,_4),(_2,_2,_2)):((_128,_1,_16),(_64,_8,_512))</span><br><span class="line">  Thr shape: (_4,_8,_4) = 128 threads</span><br><span class="line">  Val shape: (_2,_2,_2) = 8 values/thread</span><br><span class="line">  Total: 128 × 8 = 1024 elements</span><br></pre></td></tr></table></figure>
+
+<p><strong>Thread 0’s Values</strong>: <a href="/assets/cute-layout-divide/step5_thread0_positions.pdf">step5_thread0_positions.pdf</a></p>
+<h3 id="Thread-Value-Layout-Visualization"><a href="#Thread-Value-Layout-Visualization" class="headerlink" title="Thread-Value Layout Visualization"></a>Thread-Value Layout Visualization</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">(128 threads × 8 values):</span><br><span class="line">         0      1      2      3      4      5      6      7</span><br><span class="line">    +------+------+------+------+------+------+------+------+</span><br><span class="line"> 0  |    0 |   64 |    8 |   72 |  512 |  576 |  520 |  584 |</span><br><span class="line">    +------+------+------+------+------+------+------+------+</span><br><span class="line"> 1  |  128 |  192 |  136 |  200 |  640 |  704 |  648 |  712 |</span><br><span class="line">    +------+------+------+------+------+------+------+------+</span><br><span class="line"> 2  |  256 |  320 |  264 |  328 |  768 |  832 |  776 |  840 |</span><br><span class="line">    +------+------+------+------+------+------+------+------+</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+
+<p><strong>Full layout</strong>: <a href="/assets/cute-layout-divide/step4_clayout_64x16.pdf">step4_clayout_64x16.pdf</a></p>
+<h3 id="Thread-0’s-8-Values"><a href="#Thread-0’s-8-Values" class="headerlink" title="Thread 0’s 8 Values"></a>Thread 0’s 8 Values</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">Val_idx -&gt; offset -&gt; (m, n)</span><br><span class="line">V0 -&gt; offset   0 -&gt; (m= 0, n= 0)</span><br><span class="line">V1 -&gt; offset  64 -&gt; (m= 0, n= 1)</span><br><span class="line">V2 -&gt; offset   8 -&gt; (m= 8, n= 0)</span><br><span class="line">V3 -&gt; offset  72 -&gt; (m= 8, n= 1)</span><br><span class="line">V4 -&gt; offset 512 -&gt; (m= 0, n= 8)</span><br><span class="line">V5 -&gt; offset 576 -&gt; (m= 0, n= 9)</span><br><span class="line">V6 -&gt; offset 520 -&gt; (m= 8, n= 8)</span><br><span class="line">V7 -&gt; offset 584 -&gt; (m= 8, n= 9)</span><br></pre></td></tr></table></figure>
+
+<p>Pattern: Thread 0 holds 2×2 blocks at positions (0,0), (0,8), (8,0), (8,8) in the 64×16 Atom.</p>
+<h2 id="6-Step-4-zipped-divide-for-Thread-Tiling"><a href="#6-Step-4-zipped-divide-for-Thread-Tiling" class="headerlink" title="6. Step 4: zipped_divide for Thread Tiling"></a>6. Step 4: zipped_divide for Thread Tiling</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> AtomThrID = Layout&lt;Int&lt;<span class="number">128</span>&gt;&gt;&#123;&#125;;</span><br><span class="line"><span class="keyword">auto</span> thr_layout_vmnk = <span class="built_in">tiled_product</span>(AtomThrID, AtomLayoutMNK&#123;&#125;);</span><br><span class="line"><span class="comment">// thr_layout_vmnk: (_128,_2,_1,_1):(_1,_128,_0,_0)</span></span><br><span class="line"><span class="comment">// Total threads: 256</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">auto</span> thr_tile = <span class="built_in">make_tile</span>(_,</span><br><span class="line">                          <span class="built_in">make_tile</span>(<span class="built_in">make_layout</span>(<span class="built_in">size</span>&lt;<span class="number">1</span>&gt;(thr_layout_vmnk)),</span><br><span class="line">                                    <span class="built_in">make_layout</span>(<span class="built_in">size</span>&lt;<span class="number">2</span>&gt;(thr_layout_vmnk))));</span><br><span class="line"><span class="comment">// thr_tile: (_, (_2:_1, _1:_0))</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">auto</span> thr_tensor = <span class="built_in">zipped_divide</span>(tv_tensor, thr_tile);</span><br></pre></td></tr></table></figure>
+
+<h3 id="tiled-product-Analysis"><a href="#tiled-product-Analysis" class="headerlink" title="tiled_product Analysis"></a>tiled_product Analysis</h3><p><code>tiled_product(AtomThrID, AtomLayoutMNK)</code>:</p>
+<ul>
+<li>AtomThrID: 128 threads per Atom</li>
+<li>AtomLayoutMNK: 2×1×1 Atoms (cooperative in M direction)</li>
+<li>Result: 128×2×1×1 &#x3D; 256 total threads</li>
+</ul>
+<h3 id="Final-Result"><a href="#Final-Result" class="headerlink" title="Final Result"></a>Final Result</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">thr_tensor: (((_4,_8,_4),(_2,_1)),((_2,_2,_2),(_1,_8)))</span><br><span class="line">Shape:      ((ThrV, (ThrM, ThrN)), (FrgV, (RestM&#x27;, RestN&#x27;)))</span><br></pre></td></tr></table></figure>
+
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ThrV</td>
+<td>128</td>
+<td>Threads per Atom</td>
+</tr>
+<tr>
+<td>ThrM</td>
+<td>2</td>
+<td>Atoms in M (cooperative)</td>
+</tr>
+<tr>
+<td>ThrN</td>
+<td>1</td>
+<td>Atoms in N</td>
+</tr>
+<tr>
+<td>FrgV</td>
+<td>8</td>
+<td>Values per thread per Atom</td>
+</tr>
+<tr>
+<td>RestM’</td>
+<td>1</td>
+<td>M tiles remaining per thread</td>
+</tr>
+<tr>
+<td>RestN’</td>
+<td>8</td>
+<td>N tiles remaining per thread</td>
+</tr>
+</tbody></table>
+<h2 id="7-Summary-Verification"><a href="#7-Summary-Verification" class="headerlink" title="7. Summary Verification"></a>7. Summary Verification</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">Thread coordinates:</span><br><span class="line">  ThrV  = 128 (threads per Atom)</span><br><span class="line">  ThrM  = 2   (Atoms in M direction)</span><br><span class="line">  ThrN  = 1   (Atoms in N direction)</span><br><span class="line">  Total = 128 × 2 × 1 = 256 threads</span><br><span class="line"></span><br><span class="line">Per-thread values:</span><br><span class="line">  FrgV   = 8 (values per thread per Atom)</span><br><span class="line">  RestM&#x27; = 1</span><br><span class="line">  RestN&#x27; = 8</span><br><span class="line">  Values per thread = 8 × 1 × 8 = 64</span><br><span class="line"></span><br><span class="line">Verification:</span><br><span class="line">  Total = threads × values_per_thread</span><br><span class="line">        = 256 × 64 = 16384</span><br><span class="line">  Expected = 128 × 128 = 16384  ✓</span><br></pre></td></tr></table></figure>
+
+<h2 id="8-Thread-Data-Examples"><a href="#8-Thread-Data-Examples" class="headerlink" title="8. Thread Data Examples"></a>8. Thread Data Examples</h2><h3 id="Thread-0-ThrV-0-ThrM-0-ThrN-0"><a href="#Thread-0-ThrV-0-ThrM-0-ThrN-0" class="headerlink" title="Thread 0 (ThrV&#x3D;0, ThrM&#x3D;0, ThrN&#x3D;0)"></a>Thread 0 (ThrV&#x3D;0, ThrM&#x3D;0, ThrN&#x3D;0)</h3><ul>
+<li>Belongs to: Atom 0 (Warpgroup 0)</li>
+<li>Covers M rows: 0-63</li>
+<li>Values: 64 elements across 8 N-tiles</li>
+</ul>
+<h3 id="Thread-128-ThrV-0-ThrM-1-ThrN-0"><a href="#Thread-128-ThrV-0-ThrM-1-ThrN-0" class="headerlink" title="Thread 128 (ThrV&#x3D;0, ThrM&#x3D;1, ThrN&#x3D;0)"></a>Thread 128 (ThrV&#x3D;0, ThrM&#x3D;1, ThrN&#x3D;0)</h3><ul>
+<li>Belongs to: Atom 1 (Warpgroup 1)</li>
+<li>Covers M rows: 64-127</li>
+<li>Same value pattern but offset by 64 rows</li>
+</ul>
+<h3 id="Comparing-First-4-Threads"><a href="#Comparing-First-4-Threads" class="headerlink" title="Comparing First 4 Threads"></a>Comparing First 4 Threads</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">Thread | V0 offset (m,n) | V1 offset (m,n) | V2 offset (m,n) | V3 offset (m,n)</span><br><span class="line">-------|-----------------|-----------------|-----------------|----------------</span><br><span class="line">   0   |    0 ( 0, 0)    |   64 ( 0, 1)    |    8 ( 8, 0)    |   72 ( 8, 1)</span><br><span class="line">   1   |  128 ( 0, 2)    |  192 ( 0, 3)    |  136 ( 8, 2)    |  200 ( 8, 3)</span><br><span class="line">   2   |  256 ( 0, 4)    |  320 ( 0, 5)    |  264 ( 8, 4)    |  328 ( 8, 5)</span><br><span class="line">   3   |  384 ( 0, 6)    |  448 ( 0, 7)    |  392 ( 8, 6)    |  456 ( 8, 7)</span><br></pre></td></tr></table></figure>
+
+<p>Pattern: Adjacent threads handle adjacent N columns within the same M rows.</p>
+<h2 id="9-Data-Flow-Diagram"><a href="#9-Data-Flow-Diagram" class="headerlink" title="9. Data Flow Diagram"></a>9. Data Flow Diagram</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">Step 0: ctensor (128,128)</span><br><span class="line">            |</span><br><span class="line">            v</span><br><span class="line">Step 2: zipped_divide by AtomShape (64,16)</span><br><span class="line">            |</span><br><span class="line">            | Shape: ((_64,_16), (_2,_8))</span><br><span class="line">            |        Atom内部    Atom索引</span><br><span class="line">            v</span><br><span class="line">Step 3: compose with CLayout_64x16</span><br><span class="line">            |</span><br><span class="line">            | Shape: ((128threads, 8values), (2,8))</span><br><span class="line">            |        Thread-Value    Atom索引</span><br><span class="line">            v</span><br><span class="line">Step 4: zipped_divide by Thread Tiling</span><br><span class="line">            |</span><br><span class="line">            | Shape: ((ThrV,(ThrM,ThrN)), (FrgV,(RestM,RestN)))</span><br><span class="line">            |        Thread坐标        Per-thread数据</span><br><span class="line">            v</span><br><span class="line">Final: thr_tensor for per-thread access</span><br></pre></td></tr></table></figure>
+
+<h2 id="10-Practical-Usage"><a href="#10-Practical-Usage" class="headerlink" title="10. Practical Usage"></a>10. Practical Usage</h2><p>In actual CUTLASS code, <code>thrfrg_C</code> is used to:</p>
+<ol>
+<li><strong>Create fragment view</strong>: Each thread knows which elements to accumulate</li>
+<li><strong>Enable WGMMA</strong>: Hardware MMA operations expect specific data layouts</li>
+<li><strong>Cooperative tiling</strong>: Multiple warpgroups collaborate on larger tiles</li>
+</ol>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// In TiledMMA::thrfrg_C</span></span><br><span class="line"><span class="keyword">auto</span> thr_tensor = <span class="built_in">thrfrg_C</span>(ctensor);</span><br><span class="line"></span><br><span class="line"><span class="comment">// Thread-specific slice</span></span><br><span class="line"><span class="keyword">auto</span> thr_frg = <span class="built_in">thr_tensor</span>(_, threadIdx.x, _);</span><br><span class="line"><span class="comment">// This gives the 64 elements this thread is responsible for</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="11-PDF-Visualizations"><a href="#11-PDF-Visualizations" class="headerlink" title="11. PDF Visualizations"></a>11. PDF Visualizations</h2><p>All visualizations generated by <code>print_latex</code>:</p>
+<ol>
+<li><a href="/assets/cute-layout-divide/step0_original_8x8.pdf">step0_original_8x8.pdf</a> - Original layout</li>
+<li><a href="/assets/cute-layout-divide/step1_logical_divide.pdf">step1_logical_divide.pdf</a> - logical_divide result</li>
+<li><a href="/assets/cute-layout-divide/step2_zipped_divide.pdf">step2_zipped_divide.pdf</a> - zipped_divide result</li>
+<li><a href="/assets/cute-layout-divide/step3_atom_layout_tv.pdf">step3_atom_layout_tv.pdf</a> - AtomLayoutC_TV</li>
+<li><a href="/assets/cute-layout-divide/step4_clayout_64x16.pdf">step4_clayout_64x16.pdf</a> - CLayout_64x16 (32 threads)</li>
+<li><a href="/assets/cute-layout-divide/step5_thread0_positions.pdf">step5_thread0_positions.pdf</a> - Thread 0’s values</li>
+<li><a href="/assets/cute-layout-divide/step6_zipped_divide_16x16.pdf">step6_zipped_divide_16x16.pdf</a> - 16x16 zipped_divide</li>
+</ol>
+<h2 id="References"><a href="#References" class="headerlink" title="References"></a>References</h2><ul>
+<li>Source: <code>cute-examples/thrfrg_C.cu</code></li>
+<li>Source: <code>cute-examples/zipped_divide.cu</code></li>
+<li>CUTLASS: <code>include/cute/atom/mma_atom.hpp</code></li>
+</ul>
+</div><div class="article-licensing box"><div class="licensing-title"><p>0x0F CuTe thrfrg_C: Thread Fragmentation for C Tensor</p><p><a href="https://drxuqian.github.io/2024/12/24/0x0F-thrfrg-c-analysis/">https://drxuqian.github.io/2024/12/24/0x0F-thrfrg-c-analysis/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>DrXuQian</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2024-12-24</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2025-12-24</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/CUTLASS/">CUTLASS</a><a class="link-muted mr-2" rel="tag" href="/tags/CuTe/">CuTe</a><a class="link-muted mr-2" rel="tag" href="/tags/TiledMMA/">TiledMMA</a><a class="link-muted mr-2" rel="tag" href="/tags/thrfrg-C/">thrfrg_C</a><a class="link-muted mr-2" rel="tag" href="/tags/Thread-Value-Layout/">Thread-Value Layout</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/2024/12/24/0x0D-tma-multicast/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">0x0D CUTLASS SM90 TMA Multicast Deep Dive</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/2024/12/23/0x0B-pipeline-barrier-ptx/"><span class="level-item">0x0B CUTLASS SM90 Pipeline and mbarrier PTX Mapping</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1 is-sticky"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.jpg" alt="DrXuQian"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">DrXuQian</p><p class="is-size-6 is-block">CUDA/GPU Enthusiast</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>China</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">15</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">7</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">33</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/DrXuQian" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></div></div></div><!--!--><div class="column-right-shadow is-hidden-widescreen is-sticky"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3 is-sticky"><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/CUDA/"><span class="level-start"><span class="level-item">CUDA</span></span><span class="level-end"><span class="level-item tag">3</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/CuTe/"><span class="level-start"><span class="level-item">CuTe</span></span><span class="level-end"><span class="level-item tag">2</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/CuTe/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></li><li><a class="level is-mobile" href="/categories/CUDA/PTX/"><span class="level-start"><span class="level-item">PTX</span></span><span class="level-end"><span class="level-item tag">1</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/PTX/Hopper/"><span class="level-start"><span class="level-item">Hopper</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></li></ul></li><li><a class="level is-mobile" href="/categories/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/GPU-Computing/"><span class="level-start"><span class="level-item">GPU Computing</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T08:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x0A-gemm-loop-hierarchy/">0x0A CUTLASS SM90 GEMM Loop Hierarchy</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T04:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x08-tensor-engine-types/">0x08 CuTe Tensor Engine Types</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T03:30:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x07-ss-op-selector/">0x07 CUTLASS ss_op_selector MMA Atom Selection</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T03:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x06-mma-unpack/">0x06 CUTLASS mma_unpack Deep Dive</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T02:30:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x05-make-tiled-mma/">0x05 CUTLASS make_tiled_mma and MMA_Atom</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2024/12/"><span class="level-start"><span class="level-item">十二月 2024</span></span><span class="level-end"><span class="level-item tag">15</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/CUTLASS/"><span class="tag">CUTLASS</span><span class="tag">12</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SM90/"><span class="tag">SM90</span><span class="tag">9</span></a></div><div class="control"><a class="tags has-addons" href="/tags/CuTe/"><span class="tag">CuTe</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GMMA/"><span class="tag">GMMA</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pipeline/"><span class="tag">Pipeline</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mbarrier/"><span class="tag">mbarrier</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PTX/"><span class="tag">PTX</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TMA/"><span class="tag">TMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/layout/"><span class="tag">layout</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TiledMMA/"><span class="tag">TiledMMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Warp-Specialization/"><span class="tag">Warp Specialization</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Multicast/"><span class="tag">Multicast</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cluster/"><span class="tag">Cluster</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/thread/"><span class="tag">thread</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/value/"><span class="tag">value</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mma/"><span class="tag">mma</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/elect/"><span class="tag">elect</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/warp/"><span class="tag">warp</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/synchronization/"><span class="tag">synchronization</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/leader/"><span class="tag">leader</span><span class="tag">1</span></a></div></div></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a><p class="is-size-7"><span>&copy; 2025 DrXuQian</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a><br><span id="busuanzi_container_site_uv">共<span id="busuanzi_value_site_uv">0</span>个访客</span></p><p class="is-size-7">© 2024 DrXuQian</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><script src="/js/animation.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script type="text/javascript" id="MathJax-script" async>MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+      },
+      svg: {
+        fontCache: 'global'
+      },
+      chtml: {
+        matchFontHeight: false
+      }
+    };</script><script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script><script src="/js/theme-toggle.js"></script></body></html>

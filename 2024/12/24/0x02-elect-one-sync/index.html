@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><title>0x02 elect_one_sync and Warp-Level Leader Election - CUTLASS 学习笔记</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0d1117"><meta name="application-name" content="CUTLASS 学习笔记"><meta name="msapplication-TileImage" content="/img/favicon.svg"><meta name="msapplication-TileColor" content="#0d1117"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="CUTLASS 学习笔记"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="description" content="This article compares elect.sync instruction with the traditional threadIdx % 32 &amp;#x3D;&amp;#x3D; 0 method for warp-level leader election."><meta property="og:type" content="blog"><meta property="og:title" content="0x02 elect_one_sync and Warp-Level Leader Election"><meta property="og:url" content="https://drxuqian.github.io/2024/12/24/0x02-elect-one-sync/"><meta property="og:site_name" content="CUTLASS 学习笔记"><meta property="og:description" content="This article compares elect.sync instruction with the traditional threadIdx % 32 &amp;#x3D;&amp;#x3D; 0 method for warp-level leader election."><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://drxuqian.github.io/img/og_image.png"><meta property="article:published_time" content="2024-12-23T16:00:00.000Z"><meta property="article:modified_time" content="2025-12-24T14:01:43.630Z"><meta property="article:author" content="DrXuQian"><meta property="article:tag" content="elect"><meta property="article:tag" content="warp"><meta property="article:tag" content="synchronization"><meta property="article:tag" content="leader"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://drxuqian.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://drxuqian.github.io/2024/12/24/0x02-elect-one-sync/"},"headline":"0x02 elect_one_sync and Warp-Level Leader Election","image":["https://drxuqian.github.io/img/og_image.png"],"datePublished":"2024-12-23T16:00:00.000Z","dateModified":"2025-12-24T14:01:43.630Z","author":{"@type":"Person","name":"DrXuQian"},"publisher":{"@type":"Organization","name":"CUTLASS 学习笔记","logo":{"@type":"ImageObject","url":"https://drxuqian.github.io/img/logo.svg"}},"description":"This article compares elect.sync instruction with the traditional threadIdx % 32 &#x3D;&#x3D; 0 method for warp-level leader election."}</script><link rel="canonical" href="https://drxuqian.github.io/2024/12/24/0x02-elect-one-sync/"><link rel="icon" href="/img/favicon.svg"><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link data-pjax rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&amp;family=Source+Code+Pro"><link data-pjax rel="stylesheet" href="/css/default.css"><style>body>.footer,body>.navbar,body>.section{opacity:0}</style><!--!--><!--!--><!--!--><script src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" defer></script><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.1"><link rel="stylesheet" href="/css/custom.css"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">Home</a><a class="navbar-item" href="/archives">Archives</a><a class="navbar-item" href="/categories">Categories</a><a class="navbar-item" href="/tags">Tags</a><a class="navbar-item" href="/about">About</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item"><time dateTime="2024-12-23T16:00:00.000Z" title="12/24/2024, 12:00:00 AM">2024-12-24</time>发表</span><span class="level-item"><time dateTime="2025-12-24T14:01:43.630Z" title="12/24/2025, 10:01:43 PM">2025-12-24</time>更新</span><span class="level-item"><a class="link-muted" href="/categories/CUDA/">CUDA</a><span> / </span><a class="link-muted" href="/categories/CUDA/PTX/">PTX</a><span> / </span><a class="link-muted" href="/categories/CUDA/PTX/Hopper/">Hopper</a></span><span class="level-item">7 分钟读完 (大约981个字)</span><span class="level-item" id="busuanzi_container_page_pv"><span id="busuanzi_value_page_pv">0</span>次访问</span></div></div><h1 class="title is-3 is-size-4-mobile">0x02 elect_one_sync and Warp-Level Leader Election</h1><div class="content"><p>This article compares <code>elect.sync</code> instruction with the traditional <code>threadIdx % 32 == 0</code> method for warp-level leader election.</p>
+<span id="more"></span>
+
+<h2 id="1-Introduction"><a href="#1-Introduction" class="headerlink" title="1. Introduction"></a>1. Introduction</h2><p>In CUDA programming, we often need to select a “leader” thread in a warp to execute certain operations (like barrier arrive, initialization, etc.). This article compares <code>elect.sync</code> instruction with the traditional <code>threadIdx % 32 == 0</code> method.</p>
+<h2 id="2-两种方法对比"><a href="#2-两种方法对比" class="headerlink" title="2. 两种方法对比"></a>2. 两种方法对比</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 方法 1: 简单判断 (可能有问题!)</span></span><br><span class="line"><span class="type">bool</span> is_leader = (threadIdx.x % <span class="number">32</span>) == <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 方法 2: elect.sync (SM90+, 更健壮!)</span></span><br><span class="line"><span class="type">bool</span> is_leader = cute::<span class="built_in">elect_one_sync</span>();</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-核心问题：部分线程不活跃"><a href="#3-核心问题：部分线程不活跃" class="headerlink" title="3. 核心问题：部分线程不活跃"></a>3. 核心问题：部分线程不活跃</h2><h3 id="3-1-问题场景"><a href="#3-1-问题场景" class="headerlink" title="3.1 问题场景"></a>3.1 问题场景</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (some_condition) &#123;  <span class="comment">// 假设只有部分线程满足条件</span></span><br><span class="line">    <span class="comment">// Lane 0 可能不在这里！</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">if</span> (threadIdx.x % <span class="number">32</span> == <span class="number">0</span>) &#123;  <span class="comment">// ❌ Lane 0 不活跃，没人执行!</span></span><br><span class="line">        <span class="built_in">do_something</span>();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-图示"><a href="#3-2-图示" class="headerlink" title="3.2 图示"></a>3.2 图示</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">Warp 32 threads:</span><br><span class="line"></span><br><span class="line">Lane:  0   1   2   3   4   5   6   7  ...  31</span><br><span class="line">       x   o   o   x   o   o   o   x  ...  o</span><br><span class="line">       |   |</span><br><span class="line">       |   +-- active</span><br><span class="line">       +------ inactive (Lane 0 not in this branch!)</span><br><span class="line"></span><br><span class="line">threadIdx % 32 == 0: no one satisfies!</span><br><span class="line">elect.sync: picks from active threads (e.g., Lane 1)</span><br></pre></td></tr></table></figure>
+
+<h2 id="4-elect-sync-PTX-指令"><a href="#4-elect-sync-PTX-指令" class="headerlink" title="4. elect.sync PTX 指令"></a>4. elect.sync PTX 指令</h2><h3 id="4-1-CuTe-实现"><a href="#4-1-CuTe-实现" class="headerlink" title="4.1 CuTe 实现"></a>4.1 CuTe 实现</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">CUTE_HOST_DEVICE <span class="type">uint32_t</span> <span class="title">elect_one_sync</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> defined(CUTE_ARCH_ELECT_ONE_SM90_ENABLED)</span></span><br><span class="line">    <span class="type">uint32_t</span> pred = <span class="number">0</span>;</span><br><span class="line">    <span class="type">uint32_t</span> laneid = <span class="number">0</span>;</span><br><span class="line">    <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;&#123;\n&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;.reg .b32 %%rx;\n&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;.reg .pred %%px;\n&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;     elect.sync %%rx|%%px, %2;\n&quot;</span>  <span class="comment">// mask = 0xFFFFFFFF</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;@%%px mov.s32 %1, 1;\n&quot;</span>            <span class="comment">// 被选中的线程设 pred = 1</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;     mov.s32 %0, %%rx;\n&quot;</span>          <span class="comment">// 返回被选中的 lane id</span></span></span></span><br><span class="line"><span class="params"><span class="function">        <span class="string">&quot;&#125;\n&quot;</span></span></span></span><br><span class="line"><span class="params"><span class="function">        : <span class="string">&quot;+r&quot;</span>(laneid), <span class="string">&quot;+r&quot;</span>(pred)</span></span></span><br><span class="line"><span class="params"><span class="function">        : <span class="string">&quot;r&quot;</span>(<span class="number">0xFFFFFFFF</span>))</span></span>;</span><br><span class="line">    <span class="keyword">return</span> pred;</span><br><span class="line"><span class="meta">#<span class="keyword">elif</span> defined(__CUDA_ARCH__)</span></span><br><span class="line">    <span class="keyword">return</span> (threadIdx.x % <span class="number">32</span>) == <span class="number">0</span>;  <span class="comment">// Fallback</span></span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-2-输出含义"><a href="#4-2-输出含义" class="headerlink" title="4.2 输出含义"></a>4.2 输出含义</h3><table>
+<thead>
+<tr>
+<th>输出</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>%%rx</code></td>
+<td>被选中的 lane ID</td>
+</tr>
+<tr>
+<td><code>%%px</code></td>
+<td>当前线程是否被选中 (predicate)</td>
+</tr>
+</tbody></table>
+<h2 id="5-对比示例"><a href="#5-对比示例" class="headerlink" title="5. 对比示例"></a>5. 对比示例</h2><h3 id="场景-1：所有线程活跃"><a href="#场景-1：所有线程活跃" class="headerlink" title="场景 1：所有线程活跃"></a>场景 1：所有线程活跃</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">Lane:     0   1   2   3   ...  31</span><br><span class="line">活跃:     ✓   ✓   ✓   ✓   ...  ✓</span><br><span class="line"></span><br><span class="line">threadIdx % 32 == 0:  Lane 0 执行 ✓</span><br><span class="line">elect.sync:           Lane 0 执行 ✓  (选最小活跃 lane)</span><br><span class="line"></span><br><span class="line">结果相同 ✓</span><br></pre></td></tr></table></figure>
+
+<h3 id="场景-2：Lane-0-不活跃"><a href="#场景-2：Lane-0-不活跃" class="headerlink" title="场景 2：Lane 0 不活跃"></a>场景 2：Lane 0 不活跃</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">Lane:     0   1   2   3   ...  31</span><br><span class="line">活跃:     ✗   ✓   ✓   ✓   ...  ✓</span><br><span class="line"></span><br><span class="line">threadIdx % 32 == 0:  没人执行! ✗</span><br><span class="line">elect.sync:           Lane 1 执行 ✓  (选最小活跃 lane)</span><br><span class="line"></span><br><span class="line">elect.sync 更健壮!</span><br></pre></td></tr></table></figure>
+
+<h3 id="场景-3：只有少数线程活跃"><a href="#场景-3：只有少数线程活跃" class="headerlink" title="场景 3：只有少数线程活跃"></a>场景 3：只有少数线程活跃</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">Lane:     0   1   2   3   4   5   ...  31</span><br><span class="line">活跃:     ✗   ✗   ✗   ✗   ✓   ✓   ...  ✗</span><br><span class="line"></span><br><span class="line">threadIdx % 32 == 0:  没人执行! ✗</span><br><span class="line">elect.sync:           Lane 4 执行 ✓</span><br><span class="line"></span><br><span class="line">elect.sync 总能选出一个 leader!</span><br></pre></td></tr></table></figure>
+
+<h2 id="6-实际使用场景"><a href="#6-实际使用场景" class="headerlink" title="6. 实际使用场景"></a>6. 实际使用场景</h2><h3 id="6-1-Barrier-初始化"><a href="#6-1-Barrier-初始化" class="headerlink" title="6.1 Barrier 初始化"></a>6.1 Barrier 初始化</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">initialize_barrier_array_aligned</span><span class="params">(T ptr, <span class="type">int</span> arv_cnt)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 只需要一个线程执行初始化</span></span><br><span class="line">    <span class="keyword">if</span> (cute::<span class="built_in">elect_one_sync</span>()) &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; Stages; i++) &#123;</span><br><span class="line">            ptr[i].<span class="built_in">init</span>(arv_cnt);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="6-2-条件分支中的-Leader-选举"><a href="#6-2-条件分支中的-Leader-选举" class="headerlink" title="6.2 条件分支中的 Leader 选举"></a>6.2 条件分支中的 Leader 选举</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (should_do_work) &#123;</span><br><span class="line">    <span class="comment">// 这个分支里可能只有部分线程</span></span><br><span class="line">    <span class="comment">// Lane 0 可能不在这里</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">if</span> (cute::<span class="built_in">elect_one_sync</span>()) &#123;</span><br><span class="line">        <span class="comment">// 保证有一个线程执行</span></span><br><span class="line">        barrier.<span class="built_in">arrive</span>();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="6-3-TMA-操作"><a href="#6-3-TMA-操作" class="headerlink" title="6.3 TMA 操作"></a>6.3 TMA 操作</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (cute::<span class="built_in">elect_one_sync</span>()) &#123;</span><br><span class="line">    <span class="comment">// 只有一个线程发起 TMA</span></span><br><span class="line">    <span class="built_in">tma_load_multicast</span>(...);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="7-额外好处：隐式同步"><a href="#7-额外好处：隐式同步" class="headerlink" title="7. 额外好处：隐式同步"></a>7. 额外好处：隐式同步</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">elect.sync %%rx|%%px, mask;</span><br><span class="line"><span class="comment">//    ↑</span></span><br><span class="line"><span class="comment">//   sync! 参与的线程会同步</span></span><br></pre></td></tr></table></figure>
+
+<p><code>elect.sync</code> 自带 warp 同步，确保：</p>
+<ol>
+<li>所有活跃线程到达这个点</li>
+<li>选举结果对所有线程一致</li>
+<li>避免竞争条件</li>
+</ol>
+<h2 id="8-Fallback-行为"><a href="#8-Fallback-行为" class="headerlink" title="8. Fallback 行为"></a>8. Fallback 行为</h2><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">if</span> defined(CUTE_ARCH_ELECT_ONE_SM90_ENABLED)</span></span><br><span class="line">    <span class="comment">// SM90+: 使用 elect.sync 指令</span></span><br><span class="line">    <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span><span class="params">(<span class="string">&quot;elect.sync ...&quot;</span>)</span></span>;</span><br><span class="line">    <span class="keyword">return</span> pred;</span><br><span class="line"><span class="meta">#<span class="keyword">elif</span> defined(__CUDA_ARCH__)</span></span><br><span class="line">    <span class="comment">// 旧架构: 没有 elect.sync，假设所有线程活跃</span></span><br><span class="line">    <span class="keyword">return</span> (threadIdx.x % <span class="number">32</span>) == <span class="number">0</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+
+<p><strong>说明：</strong></p>
+<ul>
+<li><code>elect.sync</code> 是 SM90 (Hopper) 新增指令</li>
+<li>旧架构只能用 <code>threadIdx % 32 == 0</code></li>
+<li>旧代码通常保证所有线程都活跃，所以可以工作</li>
+</ul>
+<h2 id="9-常见使用模式"><a href="#9-常见使用模式" class="headerlink" title="9. 常见使用模式"></a>9. 常见使用模式</h2><h3 id="9-1-Warp-级别选举"><a href="#9-1-Warp-级别选举" class="headerlink" title="9.1 Warp 级别选举"></a>9.1 Warp 级别选举</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 每个 warp 选一个 leader</span></span><br><span class="line"><span class="keyword">if</span> (cute::<span class="built_in">elect_one_sync</span>()) &#123;</span><br><span class="line">    <span class="comment">// 一个 warp 一个线程执行</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="9-2-Warpgroup-级别选举-4-warps"><a href="#9-2-Warpgroup-级别选举-4-warps" class="headerlink" title="9.2 Warpgroup 级别选举 (4 warps)"></a>9.2 Warpgroup 级别选举 (4 warps)</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 只在 warp 0 中选举</span></span><br><span class="line"><span class="keyword">if</span> (warp_idx == <span class="number">0</span> &amp;&amp; cute::<span class="built_in">elect_one_sync</span>()) &#123;</span><br><span class="line">    <span class="comment">// 一个 warpgroup 一个线程执行</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="9-3-Block-级别选举"><a href="#9-3-Block-级别选举" class="headerlink" title="9.3 Block 级别选举"></a>9.3 Block 级别选举</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 只在 warp 0 中选举</span></span><br><span class="line"><span class="keyword">if</span> (threadIdx.x / <span class="number">32</span> == <span class="number">0</span> &amp;&amp; cute::<span class="built_in">elect_one_sync</span>()) &#123;</span><br><span class="line">    <span class="comment">// 一个 block 一个线程执行</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="10-性能考虑"><a href="#10-性能考虑" class="headerlink" title="10. 性能考虑"></a>10. 性能考虑</h2><table>
+<thead>
+<tr>
+<th>方面</th>
+<th><code>threadIdx % 32 == 0</code></th>
+<th><code>elect.sync</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>指令数</td>
+<td>1 条比较</td>
+<td>~3 条指令</td>
+</tr>
+<tr>
+<td>同步</td>
+<td>无</td>
+<td>隐式 warp sync</td>
+</tr>
+<tr>
+<td>健壮性</td>
+<td>低</td>
+<td>高</td>
+</tr>
+<tr>
+<td>架构支持</td>
+<td>所有</td>
+<td>SM90+</td>
+</tr>
+</tbody></table>
+<p><strong>结论：性能差异微小，<code>elect.sync</code> 的健壮性优势远大于微小的性能开销。</strong></p>
+<h2 id="11-总结"><a href="#11-总结" class="headerlink" title="11. 总结"></a>11. 总结</h2><table>
+<thead>
+<tr>
+<th>特性</th>
+<th><code>threadIdx % 32 == 0</code></th>
+<th><code>elect.sync</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Lane 0 不活跃时</td>
+<td>❌ 没人执行</td>
+<td>✓ 选其他活跃线程</td>
+</tr>
+<tr>
+<td>部分线程活跃</td>
+<td>❌ 可能没人执行</td>
+<td>✓ 总能选一个</td>
+</tr>
+<tr>
+<td>隐式同步</td>
+<td>❌ 无</td>
+<td>✓ 有</td>
+</tr>
+<tr>
+<td>架构要求</td>
+<td>任意</td>
+<td>SM90+</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>保证全活跃</td>
+<td>通用</td>
+</tr>
+</tbody></table>
+<p><strong>核心理解：<code>elect.sync</code> 从当前活跃线程中选举一个 leader，即使 Lane 0 不活跃也能正常工作，比硬编码 <code>threadIdx % 32 == 0</code> 更健壮。在 SM90+ 架构上应优先使用 <code>elect_one_sync()</code>。</strong></p>
+</div><div class="article-licensing box"><div class="licensing-title"><p>0x02 elect_one_sync and Warp-Level Leader Election</p><p><a href="https://drxuqian.github.io/2024/12/24/0x02-elect-one-sync/">https://drxuqian.github.io/2024/12/24/0x02-elect-one-sync/</a></p></div><div class="licensing-meta level is-mobile"><div class="level-left"><div class="level-item is-narrow"><div><h6>作者</h6><p>DrXuQian</p></div></div><div class="level-item is-narrow"><div><h6>发布于</h6><p>2024-12-24</p></div></div><div class="level-item is-narrow"><div><h6>更新于</h6><p>2025-12-24</p></div></div><div class="level-item is-narrow"><div><h6>许可协议</h6><p><a class="icons" rel="noopener" target="_blank" title="Creative Commons" href="https://creativecommons.org/"><i class="icon fab fa-creative-commons"></i></a><a class="icons" rel="noopener" target="_blank" title="Attribution" href="https://creativecommons.org/licenses/by/4.0/"><i class="icon fab fa-creative-commons-by"></i></a></p></div></div></div></div></div><div class="article-tags is-size-7 mb-4"><span class="mr-2">#</span><a class="link-muted mr-2" rel="tag" href="/tags/elect/">elect</a><a class="link-muted mr-2" rel="tag" href="/tags/warp/">warp</a><a class="link-muted mr-2" rel="tag" href="/tags/synchronization/">synchronization</a><a class="link-muted mr-2" rel="tag" href="/tags/leader/">leader</a></div><!--!--></article></div><!--!--><nav class="post-navigation mt-4 level is-mobile"><div class="level-start"><a class="article-nav-prev level level-item link-muted" href="/2024/12/24/0x01-tv-layout-guide/"><i class="level-item fas fa-chevron-left"></i><span class="level-item">0x01 TV Layout (Thread-Value Layout) Guide</span></a></div><div class="level-end"><a class="article-nav-next level level-item link-muted" href="/2024/12/24/0x03-ablayout-vs-alayout/"><span class="level-item">0x03 ABLayout vs ALayout_64x16 - SS and RS Mode TV Layout</span><i class="level-item fas fa-chevron-right"></i></a></div></nav><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1 is-sticky"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar is-rounded" src="/img/avatar.jpg" alt="DrXuQian"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">DrXuQian</p><p class="is-size-6 is-block">CUDA/GPU Enthusiast</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>China</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">文章</p><a href="/archives/"><p class="title">15</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">分类</p><a href="/categories/"><p class="title">7</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">标签</p><a href="/tags/"><p class="title">33</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/DrXuQian" target="_blank" rel="me noopener">关注我</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="me noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></div></div></div><!--!--><div class="column-right-shadow is-hidden-widescreen is-sticky"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3 is-sticky"><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/CUDA/"><span class="level-start"><span class="level-item">CUDA</span></span><span class="level-end"><span class="level-item tag">3</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/CuTe/"><span class="level-start"><span class="level-item">CuTe</span></span><span class="level-end"><span class="level-item tag">2</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/CuTe/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">2</span></span></a></li></ul></li><li><a class="level is-mobile" href="/categories/CUDA/PTX/"><span class="level-start"><span class="level-item">PTX</span></span><span class="level-end"><span class="level-item tag">1</span></span></a><ul><li><a class="level is-mobile" href="/categories/CUDA/PTX/Hopper/"><span class="level-start"><span class="level-item">Hopper</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></li></ul></li><li><a class="level is-mobile" href="/categories/CUTLASS/"><span class="level-start"><span class="level-item">CUTLASS</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li><li><a class="level is-mobile" href="/categories/GPU-Computing/"><span class="level-start"><span class="level-item">GPU Computing</span></span><span class="level-end"><span class="level-item tag">6</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">最新文章</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T08:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x0A-gemm-loop-hierarchy/">0x0A CUTLASS SM90 GEMM Loop Hierarchy</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T04:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x08-tensor-engine-types/">0x08 CuTe Tensor Engine Types</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T03:30:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x07-ss-op-selector/">0x07 CUTLASS ss_op_selector MMA Atom Selection</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T03:00:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x06-mma-unpack/">0x06 CUTLASS mma_unpack Deep Dive</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article><article class="media"><div class="media-content"><p class="date"><time dateTime="2024-12-24T02:30:00.000Z">2024-12-24</time></p><p class="title"><a href="/2024/12/24/0x05-make-tiled-mma/">0x05 CUTLASS make_tiled_mma and MMA_Atom</a></p><p class="categories"><a href="/categories/GPU-Computing/">GPU Computing</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">归档</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2024/12/"><span class="level-start"><span class="level-item">十二月 2024</span></span><span class="level-end"><span class="level-item tag">15</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">标签</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/CUTLASS/"><span class="tag">CUTLASS</span><span class="tag">12</span></a></div><div class="control"><a class="tags has-addons" href="/tags/SM90/"><span class="tag">SM90</span><span class="tag">9</span></a></div><div class="control"><a class="tags has-addons" href="/tags/CuTe/"><span class="tag">CuTe</span><span class="tag">8</span></a></div><div class="control"><a class="tags has-addons" href="/tags/GMMA/"><span class="tag">GMMA</span><span class="tag">3</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Pipeline/"><span class="tag">Pipeline</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mbarrier/"><span class="tag">mbarrier</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/PTX/"><span class="tag">PTX</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TMA/"><span class="tag">TMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/layout/"><span class="tag">layout</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/TiledMMA/"><span class="tag">TiledMMA</span><span class="tag">2</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Warp-Specialization/"><span class="tag">Warp Specialization</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Multicast/"><span class="tag">Multicast</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/Cluster/"><span class="tag">Cluster</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/thread/"><span class="tag">thread</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/value/"><span class="tag">value</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/mma/"><span class="tag">mma</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/elect/"><span class="tag">elect</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/warp/"><span class="tag">warp</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/synchronization/"><span class="tag">synchronization</span><span class="tag">1</span></a></div><div class="control"><a class="tags has-addons" href="/tags/leader/"><span class="tag">leader</span><span class="tag">1</span></a></div></div></div></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="CUTLASS 学习笔记" height="28"></a><p class="is-size-7"><span>&copy; 2025 DrXuQian</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a><br><span id="busuanzi_container_site_uv">共<span id="busuanzi_value_site_uv">0</span>个访客</span></p><p class="is-size-7">© 2024 DrXuQian</p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="GitHub" href="https://github.com/DrXuQian"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script data-pjax src="/js/column.js"></script><script src="/js/animation.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script data-pjax src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/cookieconsent@3.1.1/build/cookieconsent.min.js" defer></script><script>window.addEventListener("load", () => {
+      window.cookieconsent.initialise({
+        type: "info",
+        theme: "edgeless",
+        static: false,
+        position: "bottom-left",
+        content: {
+          message: "此网站使用Cookie来改善您的体验。",
+          dismiss: "知道了！",
+          allow: "允许使用Cookie",
+          deny: "拒绝",
+          link: "了解更多",
+          policy: "Cookie政策",
+          href: "https://www.cookiesandyou.com/",
+        },
+        palette: {
+          popup: {
+            background: "#edeff5",
+            text: "#838391"
+          },
+          button: {
+            background: "#4b81e8"
+          },
+        },
+      });
+    });</script><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><script type="text/javascript" id="MathJax-script" async>MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+      },
+      svg: {
+        fontCache: 'global'
+      },
+      chtml: {
+        matchFontHeight: false
+      }
+    };</script><script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script><script src="https://cdn.jsdelivr.net/npm/pjax@0.2.8/pjax.min.js"></script><script src="/js/pjax.js"></script><!--!--><!--!--><!--!--><script data-pjax src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script data-pjax src="/js/insight.js" defer></script><script data-pjax>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script><script src="/js/theme-toggle.js"></script></body></html>
