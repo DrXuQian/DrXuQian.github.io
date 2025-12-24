@@ -62,4 +62,4 @@ theme: icarus
 deploy:
   type: git
   repo: git@github.com:DrXuQian/DrXuQian.github.io.git
-  branch: gh-pages
+  branch: main
