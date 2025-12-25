@@ -9,6 +9,8 @@ This article explains TV Layout in CuTe, the core abstraction for describing how
 
 <!-- more -->
 
+> **示例代码**: [0x01_tv_layout.cu](https://github.com/DrXuQian/cute-examples/blob/main/0x01_tv_layout.cu)
+
 ## 1. Introduction
 
 TV Layout is the core abstraction in CuTe that describes how data is distributed across threads. Understanding TV Layout is key to mastering WGMMA and TMA.

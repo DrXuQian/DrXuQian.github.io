@@ -14,6 +14,8 @@ This article explains CUTLASS Atom MMA SS and RS modes, including WGMMA instruct
 
 <!-- more -->
 
+> **示例代码**: [0x04_atom_mma_ss_rs.cu](https://github.com/DrXuQian/cute-examples/blob/main/0x04_atom_mma_ss_rs.cu)
+
 ## 1. MMA SS 模式
 
 Atom MMA的一个例子：

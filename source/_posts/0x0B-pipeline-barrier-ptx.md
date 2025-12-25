@@ -15,6 +15,8 @@ This article explains CUTLASS SM90 Pipeline mechanism and its underlying mbarrie
 
 <!-- more -->
 
+> **示例代码**: [0x0B_pipeline_barrier_ptx.cu](https://github.com/DrXuQian/cute-examples/blob/main/0x0B_pipeline_barrier_ptx.cu)
+
 ## 1. mbarrier 原理
 
 ### 1.1 什么是 mbarrier

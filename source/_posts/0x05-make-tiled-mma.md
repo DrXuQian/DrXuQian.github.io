@@ -14,6 +14,8 @@ This article explains `make_tiled_mma` function and `MMA_Atom` class implementat
 
 <!-- more -->
 
+> **示例代码**: [0x05_make_tiled_mma.cu](https://github.com/DrXuQian/cute-examples/blob/main/0x05_make_tiled_mma.cu)
+
 ## 1. make_tiled_mma 函数
 
 ```C++

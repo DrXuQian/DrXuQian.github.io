@@ -9,6 +9,8 @@ This article compares two TV Layout types for WGMMA operand access: ABLayout (SS
 
 <!-- more -->
 
+> **示例代码**: [0x03_ablayout_vs_alayout.cu](https://github.com/DrXuQian/cute-examples/blob/main/0x03_ablayout_vs_alayout.cu)
+
 ## 1. Introduction
 
 In CUTLASS WGMMA (Warpgroup Matrix Multiply-Accumulate), there are two operand access modes:

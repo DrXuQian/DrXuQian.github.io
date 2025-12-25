@@ -15,6 +15,8 @@ This article explains NVIDIA Hopper (SM90) TMA (Tensor Memory Accelerator) mecha
 
 <!-- more -->
 
+> **示例代码**: [0x0C_tma_descriptor.cu](https://github.com/DrXuQian/cute-examples/blob/main/0x0C_tma_descriptor.cu)
+
 > **核心要点速览**
 > 1. **TMA Descriptor**：128 字节结构，Host 端创建，Device 端使用
 > 2. **Transaction Barrier**：用 `expect_tx` + `complete_tx` 跟踪字节数，非 arrive 次数

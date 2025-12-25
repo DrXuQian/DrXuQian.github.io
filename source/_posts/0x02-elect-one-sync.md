@@ -9,6 +9,8 @@ This article compares `elect.sync` instruction with the traditional `threadIdx %
 
 <!-- more -->
 
+> **示例代码**: [0x02_elect_one_sync.cu](https://github.com/DrXuQian/cute-examples/blob/main/0x02_elect_one_sync.cu)
+
 ## 1. Introduction
 
 In CUDA programming, we often need to select a "leader" thread in a warp to execute certain operations (like barrier arrive, initialization, etc.). This article compares `elect.sync` instruction with the traditional `threadIdx % 32 == 0` method.
