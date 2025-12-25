@@ -1,6 +1,6 @@
 ---
 title: "0x08 CuTe Tensor Engine Types"
-date: 2024-12-24 12:00:00
+date: 2024-12-24 08:00:00
 tags:
   - CUTLASS
   - CuTe

@@ -1,6 +1,6 @@
 ---
 title: "0x0C CUTLASS SM90 TMA Descriptor Deep Dive"
-date: 2024-12-24
+date: 2024-12-24 12:00:00
 categories:
   - CUTLASS
 tags:

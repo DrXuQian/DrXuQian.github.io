@@ -1,6 +1,6 @@
 ---
 title: "0x0F CuTe thrfrg_C 详解：C Tensor 的线程分片机制"
-date: 2024-12-24
+date: 2024-12-24 15:00:00
 categories:
   - CUTLASS
 tags:

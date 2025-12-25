@@ -1,6 +1,6 @@
 ---
 title: "0x01 TV Layout (Thread-Value Layout) Guide"
-date: 2024-12-24
+date: 2024-12-24 01:00:00
 categories: [CUDA, CuTe, CUTLASS]
 tags: [layout, thread, value, mma]
 ---

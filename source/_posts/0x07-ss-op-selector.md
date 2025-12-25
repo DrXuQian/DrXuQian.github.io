@@ -1,6 +1,6 @@
 ---
 title: "0x07 CUTLASS ss_op_selector MMA Atom Selection"
-date: 2024-12-24 11:30:00
+date: 2024-12-24 07:00:00
 tags:
   - CUTLASS
   - CuTe

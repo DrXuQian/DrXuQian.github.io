@@ -1,6 +1,6 @@
 ---
 title: "0x06 CUTLASS mma_unpack Deep Dive"
-date: 2024-12-24 11:00:00
+date: 2024-12-24 06:00:00
 tags:
   - CUTLASS
   - CuTe

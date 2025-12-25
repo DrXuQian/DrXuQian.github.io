@@ -1,6 +1,6 @@
 ---
 title: "0x02 elect_one_sync and Warp-Level Leader Election"
-date: 2024-12-24
+date: 2024-12-24 02:00:00
 categories: [CUDA, PTX, Hopper]
 tags: [elect, warp, synchronization, leader]
 ---

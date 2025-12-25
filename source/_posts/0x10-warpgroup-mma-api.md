@@ -1,6 +1,6 @@
 ---
 title: "0x10 CUTLASS SM90 WarpGroup MMA API 详解"
-date: 2024-12-24
+date: 2024-12-24 16:00:00
 categories:
   - CUTLASS
 tags:

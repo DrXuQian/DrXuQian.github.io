@@ -1,6 +1,6 @@
 ---
 title: "0x0D CUTLASS SM90 TMA Multicast Deep Dive"
-date: 2024-12-24
+date: 2024-12-24 13:00:00
 categories:
   - CUTLASS
 tags:

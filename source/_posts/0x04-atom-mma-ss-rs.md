@@ -1,6 +1,6 @@
 ---
 title: "0x04 CUTLASS Atom MMA (SS/RS Mode)"
-date: 2024-12-24 10:00:00
+date: 2024-12-24 04:00:00
 tags:
   - CUTLASS
   - CuTe

@@ -1,6 +1,6 @@
 ---
 title: "0x03 ABLayout vs ALayout_64x16 - SS and RS Mode TV Layout"
-date: 2024-12-24
+date: 2024-12-24 03:00:00
 categories: [CUDA, CuTe, CUTLASS]
 tags: [layout, wgmma, ss-mode, rs-mode, tv-layout]
 ---
