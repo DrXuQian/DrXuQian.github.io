@@ -109,50 +109,35 @@ auto frg_layout_mn = upcast<TiledNumThr{} * V>(
 
 **upcast 的效果**：
 
-```
-upcast<N>(layout) 同时影响输入和输出：
-- 输入 shape：缩小 N 倍
-- 输出 stride：缩小 N 倍
+`upcast<N>` 同时缩小输入 shape 和输出 stride，将 N 个连续元素合并为一个单位：
 
-结果：(m', n') -> v_group_idx
-      其中 (m', n') 是单线程的坐标范围
+```
+upcast<N>(layout):
+- 输入 shape：缩小 N 倍（N 个连续坐标合并为 1 个）
+- 输出 stride：缩小 N 倍（输出值也相应缩小）
+
+原始: (m, n) -> idx，范围 [0, M*N)
+upcast<N> 后: (m', n') -> idx'，范围 [0, M*N/N) = [0, M*N/N)
+             其中 (m', n') 的 shape 缩小了 N 倍
 ```
 
 **图解**：
 
 ```
-假设 TiledNumThr=4, V=4, Tiler_MN=(4,8)
+假设 TiledNumThr=4, V=4, Tiler_MN=(4,8), upcast 系数 = 16
 
-upcast 之前: (m,n) -> linear_idx [0, 32)
+upcast 之前: shape=(4,8), (m,n) -> linear_idx [0, 32)
 
-      N →
-      0   1   2   3   4   5   6   7
-    ┌───┬───┬───┬───┬───┬───┬───┬───┐
-  0 │ 0 │ 1 │ 2 │ 3 │ 4 │ 5 │ 6 │ 7 │
-M ├───┼───┼───┼───┼───┼───┼───┼───┤
-↓ 1 │ 8 │ 9 │10 │11 │12 │13 │14 │15 │
-    ├───┼───┼───┼───┼───┼───┼───┼───┤
-  2 │16 │17 │18 │19 │20 │21 │22 │23 │
-    ├───┼───┼───┼───┼───┼───┼───┼───┤
-  3 │24 │25 │26 │27 │28 │29 │30 │31 │
-    └───┴───┴───┴───┴───┴───┴───┴───┘
+upcast<16> 之后: shape 缩小 16 倍
+  - 原 shape (4,8) = 32 个元素
+  - 新 shape: 32/16 = 2 个元素
+  - frg_layout_mn 的 shape 变成单线程在 (m,n) 空间的范围
 
-upcast<16> 之后: (m,n) -> linear_idx / 16 = v_group_idx
-
-      N →
-      0   1   2   3   4   5   6   7
-    ┌───┬───┬───┬───┬───┬───┬───┬───┐
-  0 │ 0 │ 0 │ 0 │ 0 │ 0 │ 0 │ 0 │ 0 │  ← v_group 0
-M ├───┼───┼───┼───┼───┼───┼───┼───┤
-↓ 1 │ 0 │ 0 │ 0 │ 0 │ 0 │ 0 │ 0 │ 0 │  ← v_group 0
-    ├───┼───┼───┼───┼───┼───┼───┼───┤
-  2 │ 1 │ 1 │ 1 │ 1 │ 1 │ 1 │ 1 │ 1 │  ← v_group 1
-    ├───┼───┼───┼───┼───┼───┼───┼───┤
-  3 │ 1 │ 1 │ 1 │ 1 │ 1 │ 1 │ 1 │ 1 │  ← v_group 1
-    └───┴───┴───┴───┴───┴───┴───┴───┘
+结果: (m', n') -> v_idx
+      m', n' 的范围对应单个线程负责的 (m, n) 区域
 ```
 
-**关键点**：`frg_layout_mn` 是**多对一映射**（非单射），多个 `(m,n)` 映射到同一个 `v_group_idx`。
+**关键点**：`upcast` 是**双射**，输入输出都按比例缩小。`frg_layout_mn` 描述了单线程的 V 个值在 (m,n) 空间的排布形状。
 
 ### 4.3 计算 frg_layout_v
 
@@ -165,7 +150,7 @@ auto frg_layout_v = zipped_divide(
 
 **分解理解**：
 
-1. `right_inverse(frg_layout_mn)`: 由于 `frg_layout_mn` 非单射，返回的是形状信息
+1. `right_inverse(frg_layout_mn)`: 返回 `frg_layout_mn` 的右逆，提供 v_idx 到 (m,n) 的映射
 2. `logical_product(make_layout(V), ...)`: 将 V 个值与 v_group 形状组合
 3. `zipped_divide(..., AtomNumVal)`: 按 Copy Atom 需要的值数量分组
 
@@ -303,7 +288,7 @@ copy(smem_tiled_copy, tCsA, tCrA_view);
 │  输出: ((AtomVals, RestVals), Rest...) — 按 copy 指令分组        │
 ├─────────────────────────────────────────────────────────────────┤
 │  核心步骤:                                                       │
-│  1. frg_layout_mn: 计算值在 (m,n) 空间的分组 (多对一映射)        │
+│  1. frg_layout_mn: 计算单线程值在 (m,n) 空间的排布形状           │
 │  2. frg_layout_v: 按 AtomNumVal 重新分组值                       │
 │  3. compose: 应用变换到 tensor                                   │
 │  4. 展开: 保持输出 rank 与输入一致                               │
